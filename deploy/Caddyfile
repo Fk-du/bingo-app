@@ -1,0 +1,14 @@
+# Frontend site
+{$BINGO_DOMAIN} {
+	encode gzip
+
+	# Next.js frontend. It proxies /api/v1 and /ws to the backend internally.
+	reverse_proxy frontend:3000
+}
+
+# Backend API (optional direct access: swagger, REST, /ws)
+{$API_DOMAIN} {
+	encode gzip
+
+	reverse_proxy backend:8080
+}

@@ -1,0 +1,23 @@
+# --- Secrets (never commit) ---
+.env
+*.env
+!.env.example
+deploy/.env
+
+# --- Backend ---
+bingo-bot/target/
+bingo-bot/data/
+bingo-bot/.mvn/wrapper/maven-wrapper.jar
+
+# --- Frontend ---
+bingo-app-front/node_modules/
+bingo-app-front/.next/
+bingo-app-front/out/
+bingo-app-front/build
+bingo-app-front/.env.local
+
+# --- OS / editor ---
+.DS_Store
+*.pem
+.idea/
+.vscode/

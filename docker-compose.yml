@@ -1,0 +1,90 @@
+name: bingo
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-bingo}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      POSTGRES_DB: bingo_master
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-bingo} -d bingo_master"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks:
+      - backend
+
+  backend:
+    build:
+      context: ./bingo-bot
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      BOT_USERNAME: ${BOT_USERNAME}
+      BOT_TOKEN: ${BOT_TOKEN}
+      SUPER_ADMIN_TELEGRAM_ID: ${SUPER_ADMIN_TELEGRAM_ID}
+      BINGO_WEBAPP_URL: ${BINGO_WEBAPP_URL}
+      MASTER_DB_URL: jdbc:postgresql://postgres:5432/bingo_master
+      MASTER_DB_USERNAME: ${POSTGRES_USER:-bingo}
+      MASTER_DB_PASSWORD: ${POSTGRES_PASSWORD}
+      TENANT_DB_URL: jdbc:postgresql://postgres:5432/bingo_master
+      TENANT_DB_USERNAME: ${POSTGRES_USER:-bingo}
+      TENANT_DB_PASSWORD: ${POSTGRES_PASSWORD}
+      tenant.datasource.default-database: bingo_master
+      SCREENSHOTS_DIR: /data/screenshots
+      JAVA_TOOL_OPTIONS: -Xms256m -Xmx1024m
+    volumes:
+      - screenshots:/data/screenshots
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - backend
+
+  frontend:
+    build:
+      context: ./bingo-app-front
+      dockerfile: Dockerfile
+      args:
+        BACKEND_ORIGIN: http://backend:8080
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      HOSTNAME: 0.0.0.0
+      PORT: 3000
+    depends_on:
+      - backend
+    networks:
+      - backend
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      BINGO_DOMAIN: ${BINGO_DOMAIN:?set BINGO_DOMAIN (e.g. bingo.duckdns.org)}
+      API_DOMAIN: ${API_DOMAIN:?set API_DOMAIN (e.g. bingo-api.duckdns.org)}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - frontend
+      - backend
+    networks:
+      - backend
+
+volumes:
+  pgdata:
+  screenshots:
+  caddy_data:
+  caddy_config:
+
+networks:
+  backend:

@@ -1,0 +1,749 @@
+package com.bingo.app.tenant.service;
+
+import com.bingo.app.infrastructure.persistence.TenantContext;
+import com.bingo.app.tenant.exception.RequestAlreadyProcessedException;
+import com.bingo.app.tenant.exception.WalletException;
+import com.bingo.app.master.entity.AdminFundRequest;
+import com.bingo.app.master.entity.User;
+import com.bingo.app.master.enums.FundStatus;
+import com.bingo.app.master.enums.Role;
+import com.bingo.app.master.repository.AdminFundRequestRepository;
+import com.bingo.app.master.repository.UserRepository;
+import com.bingo.app.tenant.dto.mapper.TenantMapper;
+import com.bingo.app.tenant.dto.response.CoinRequestResponse;
+import com.bingo.app.tenant.dto.response.TransactionResponse;
+import com.bingo.app.tenant.dto.response.WithdrawalResponse;
+import com.bingo.app.tenant.entity.CoinRequest;
+import com.bingo.app.tenant.entity.Player;
+import com.bingo.app.tenant.entity.Transaction;
+import com.bingo.app.tenant.entity.Withdrawal;
+import com.bingo.app.tenant.enums.RequestStatus;
+import com.bingo.app.tenant.enums.TransactionStatus;
+import com.bingo.app.tenant.enums.TransactionType;
+import com.bingo.app.tenant.repository.CoinRequestRepository;
+import com.bingo.app.tenant.repository.PlayerRepository;
+import com.bingo.app.tenant.repository.TransactionRepository;
+import com.bingo.app.tenant.repository.WithdrawalRepository;
+import com.bingo.app.master.service.NotificationService;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+import java.util.List;
+
+@Service
+@RequiredArgsConstructor
+@Slf4j
+public class WalletService {
+
+    private final UserRepository userRepository;
+    private final PlayerRepository playerRepository;
+    private final PlayerService playerService;
+    private final TransactionRepository transactionRepository;
+    private final CoinRequestRepository coinRequestRepository;
+    private final WithdrawalRepository withdrawalRepository;
+    private final AdminFundRequestRepository adminFundRequestRepository;
+    private final TenantMapper tenantMapper;
+    private final NotificationService notificationService;
+
+    // =========================================================
+    // PLAYER METHODS
+    // =========================================================
+
+    @Transactional(transactionManager = "tenantTransactionManager")
+    public CoinRequestResponse buyPoints(Long playerId, BigDecimal amount, String screenshotUrl) {
+        Player player = playerRepository.findByUserId(playerId)
+                .orElseThrow(() -> new WalletException("Player not found"));
+
+        if (amount.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new WalletException("Amount must be positive");
+        }
+
+        CoinRequest request = CoinRequest.builder()
+                .userId(playerId)
+                .amount(amount)
+                .screenshotUrl(screenshotUrl)
+                .status(RequestStatus.PENDING)
+                .createdAt(LocalDateTime.now())
+                .build();
+
+        CoinRequest saved = coinRequestRepository.save(request);
+
+        createTransaction(playerId, TransactionType.TOP_UP, amount,
+                TransactionStatus.PENDING, saved.getId(), "Points purchase requested");
+
+        notifyDepositRequested(player, saved);
+
+        log.info("Buy points request created for player {}: amount={}", playerId, amount);
+        return tenantMapper.toDto(saved);
+    }
+
+    @Transactional(transactionManager = "tenantTransactionManager")
+    public WithdrawalResponse createWithdrawRequest(Long playerId, BigDecimal amount, String payoutDetails) {
+        Player player = playerRepository.findByUserId(playerId)
+                .orElseThrow(() -> new WalletException("Player not found"));
+
+        if (amount.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new WalletException("Amount must be positive");
+        }
+
+        if (player.getBalance().compareTo(amount) < 0) {
+            throw new WalletException("Insufficient balance",
+                    "Your balance is " + player.getBalance().toPlainString() + " coins. You requested " + amount.toPlainString() + ".");
+        }
+
+        playerService.freezeBalance(playerId, amount);
+
+        Withdrawal withdrawal = Withdrawal.builder()
+                .userId(playerId)
+                .amount(amount)
+                .payoutMethod("BANK_TRANSFER")
+                .payoutDetails(payoutDetails)
+                .status(RequestStatus.PENDING)
+                .createdAt(LocalDateTime.now())
+                .build();
+
+        Withdrawal saved = withdrawalRepository.save(withdrawal);
+
+        createTransaction(playerId, TransactionType.WITHDRAWAL, amount,
+                TransactionStatus.PENDING, saved.getId(), "Withdrawal request created");
+
+        notifyWithdrawalRequested(player, saved);
+
+        log.info("Withdrawal request created for player {}: amount={}", playerId, amount);
+        return tenantMapper.toDto(saved);
+    }
+
+    @Transactional(transactionManager = "tenantTransactionManager", readOnly = true)
+    public List<TransactionResponse> getHistory(Long playerId) {
+        return transactionRepository.findByUserIdOrderByCreatedAtDesc(playerId).stream()
+                .map(tenantMapper::toDto)
+                .toList();
+    }
+
+    @Transactional(transactionManager = "tenantTransactionManager", readOnly = true)
+    public BigDecimal getBalance(Long playerId) {
+        return playerService.getBalance(playerId);
+    }
+
+    // =========================================================
+    // ADMIN METHODS
+    // =========================================================
+
+    @Transactional(transactionManager = "tenantTransactionManager")
+    public void fundPlayer(Long adminUserId, Long playerId, BigDecimal amount) {
+        User admin = userRepository.findById(adminUserId)
+                .orElseThrow(() -> new WalletException("Admin not found"));
+
+        if (admin.getRole() != Role.ADMIN) {
+            throw new WalletException("Only admins can fund players");
+        }
+
+        if (admin.getBalance().compareTo(amount) < 0) {
+            throw new WalletException("Insufficient admin balance");
+        }
+
+        Player player = playerRepository.findByUserId(playerId)
+                .orElseThrow(() -> new WalletException("Player not found"));
+
+        if (!player.getAdminUserId().equals(adminUserId)) {
+            throw new WalletException("Player does not belong to this admin");
+        }
+
+        // Tenant DB credit first; master-side deduction last (no cross-DB transaction).
+        playerService.addBalance(playerId, amount);
+
+        admin.setBalance(admin.getBalance().subtract(amount));
+        userRepository.save(admin);
+
+        createTransaction(adminUserId, TransactionType.FUND_AGENT_TO_PLAYER, amount,
+                TransactionStatus.COMPLETED, null, "Funded player " + playerId);
+        createTransaction(playerId, TransactionType.DEPOSIT, amount,
+                TransactionStatus.COMPLETED, null, "Received from admin " + adminUserId);
+
+        notifyPlayerFunded(playerId, adminUserId, amount);
+
+        log.info("Admin {} funded player {} with amount {}", adminUserId, playerId, amount);
+    }
+
+    @Transactional(transactionManager = "tenantTransactionManager", readOnly = true)
+    public List<WithdrawalResponse> getPendingWithdrawsForAdminPlayers(Long adminUserId) {
+        List<Player> players = playerRepository.findByAdminUserId(adminUserId);
+        List<Long> playerIds = players.stream().map(Player::getUserId).toList();
+
+        return withdrawalRepository.findByUserIdInOrderByCreatedAtDesc(playerIds).stream()
+                .map(tenantMapper::toDto)
+                .toList();
+    }
+
+    @Transactional(transactionManager = "tenantTransactionManager", readOnly = true)
+    public List<WithdrawalResponse> getPlayerWithdrawals(Long playerId) {
+        return withdrawalRepository.findByUserIdOrderByCreatedAtDesc(playerId).stream()
+                .map(tenantMapper::toDto)
+                .toList();
+    }
+
+    @Transactional(transactionManager = "tenantTransactionManager")
+    public void approveWithdrawal(Long withdrawalId, Long approverId) {
+        // Atomic claim: a concurrent/double approval can never proceed past this line.
+        if (withdrawalRepository.claimForProcessing(withdrawalId, RequestStatus.APPROVED,
+                RequestStatus.PENDING, approverId, LocalDateTime.now(), null) == 0) {
+            throw new RequestAlreadyProcessedException("Withdrawal already processed");
+        }
+
+        Withdrawal withdrawal = withdrawalRepository.findById(withdrawalId)
+                .orElseThrow(() -> new WalletException("Withdrawal not found"));
+
+        playerService.unfreezeBalance(withdrawal.getUserId(), withdrawal.getAmount());
+
+        Transaction transaction = transactionRepository.findByReferenceIdAndType(
+                        withdrawalId, TransactionType.WITHDRAWAL.name())
+                .orElse(null);
+
+        if (transaction != null) {
+            transaction.setStatus(TransactionStatus.COMPLETED);
+            transactionRepository.save(transaction);
+        }
+
+        notifyWithdrawalApproved(withdrawal);
+
+        log.info("Withdrawal {} approved by {}", withdrawalId, approverId);
+    }
+
+    @Transactional(transactionManager = "tenantTransactionManager")
+    public void rejectWithdrawal(Long withdrawalId, Long approverId, String reason) {
+        // Atomic claim: a concurrent/double rejection can never proceed past this line.
+        if (withdrawalRepository.claimForProcessing(withdrawalId, RequestStatus.REJECTED,
+                RequestStatus.PENDING, approverId, LocalDateTime.now(), reason) == 0) {
+            throw new RequestAlreadyProcessedException("Withdrawal already processed");
+        }
+
+        Withdrawal withdrawal = withdrawalRepository.findById(withdrawalId)
+                .orElseThrow(() -> new WalletException("Withdrawal not found"));
+
+        playerService.returnFrozenBalance(withdrawal.getUserId(), withdrawal.getAmount());
+
+        Transaction transaction = transactionRepository.findByReferenceIdAndType(
+                        withdrawalId, TransactionType.WITHDRAWAL.name())
+                .orElse(null);
+
+        if (transaction != null) {
+            transaction.setStatus(TransactionStatus.FAILED);
+            transactionRepository.save(transaction);
+        }
+
+        notifyWithdrawalRejected(withdrawal, reason);
+
+        log.info("Withdrawal {} rejected by {}: {}", withdrawalId, approverId, reason);
+    }
+
+    // =========================================================
+    // SUPER ADMIN METHODS
+    // =========================================================
+
+    @Transactional(transactionManager = "tenantTransactionManager")
+    public void fundAdmin(Long superAdminId, Long adminUserId, BigDecimal amount) {
+        User superAdmin = userRepository.findById(superAdminId)
+                .orElseThrow(() -> new WalletException("Super admin not found"));
+
+        if (superAdmin.getRole() != Role.SUPER_ADMIN) {
+            throw new WalletException("Only super admin can fund admins");
+        }
+
+        User admin = userRepository.findById(adminUserId)
+                .orElseThrow(() -> new WalletException("Admin not found"));
+
+        if (admin.getRole() != Role.ADMIN) {
+            throw new WalletException("User is not an admin");
+        }
+
+        admin.setBalance(admin.getBalance().add(amount));
+        userRepository.save(admin);
+
+        createTransaction(superAdminId, TransactionType.FUND_SUPER_ADMIN_TO_AGENT, amount,
+                TransactionStatus.COMPLETED, null, "Funded admin " + adminUserId);
+        createTransaction(adminUserId, TransactionType.DEPOSIT, amount,
+                TransactionStatus.COMPLETED, null, "Received from super admin");
+
+        notifyAdminFunded(adminUserId, amount);
+
+        log.info("Super admin {} funded admin {} with amount {}", superAdminId, adminUserId, amount);
+    }
+
+    @Transactional(transactionManager = "tenantTransactionManager")
+    public void approveCoinRequest(Long requestId, Long approverId) {
+        CoinRequest request = coinRequestRepository.findById(requestId)
+                .orElseThrow(() -> new WalletException("Coin request not found"));
+
+        if (request.getStatus() != RequestStatus.PENDING) {
+            throw new RequestAlreadyProcessedException("Request already processed");
+        }
+
+        User approver = userRepository.findById(approverId)
+                .orElseThrow(() -> new WalletException("Approver not found"));
+
+        if (approver.getRole() != Role.ADMIN) {
+            throw new WalletException("Only admins can approve coin requests");
+        }
+        if (approver.getBalance().compareTo(request.getAmount()) < 0) {
+            throw new WalletException("Insufficient balance to approve request");
+        }
+
+        // Atomic claim: a concurrent/double approval can never proceed past this line.
+        if (coinRequestRepository.claimForProcessing(requestId, RequestStatus.APPROVED,
+                RequestStatus.PENDING, approverId, LocalDateTime.now(), null) == 0) {
+            throw new RequestAlreadyProcessedException("Request already processed");
+        }
+
+        // Tenant DB work first: if any of it fails, the master-side deduction below
+        // must not have happened yet (the two DBs cannot share one transaction).
+        playerService.addBalance(request.getUserId(), request.getAmount());
+
+        Transaction transaction = transactionRepository.findByReferenceIdAndType(
+                        requestId, TransactionType.TOP_UP.name())
+                .orElse(null);
+
+        if (transaction != null) {
+            transaction.setStatus(TransactionStatus.COMPLETED);
+            transaction.setDescription("Approved by " + approverId);
+            transactionRepository.save(transaction);
+        }
+
+        createTransaction(approverId, TransactionType.FUND_AGENT_TO_PLAYER, request.getAmount(),
+                TransactionStatus.COMPLETED, requestId, "Funded player " + request.getUserId());
+
+        approver.setBalance(approver.getBalance().subtract(request.getAmount()));
+        userRepository.save(approver);
+
+        notifyDepositApproved(request);
+
+        log.info("Coin request {} approved by {} — deducted from approver balance", requestId, approverId);
+    }
+
+    @Transactional(transactionManager = "tenantTransactionManager")
+    public void rejectCoinRequest(Long requestId, Long approverId, String reason) {
+        // Atomic claim: a concurrent/double rejection can never proceed past this line.
+        if (coinRequestRepository.claimForProcessing(requestId, RequestStatus.REJECTED,
+                RequestStatus.PENDING, approverId, LocalDateTime.now(), reason) == 0) {
+            throw new RequestAlreadyProcessedException("Request already processed");
+        }
+
+        Transaction transaction = transactionRepository.findByReferenceIdAndType(
+                        requestId, TransactionType.TOP_UP.name())
+                .orElse(null);
+
+        if (transaction != null) {
+            transaction.setStatus(TransactionStatus.FAILED);
+            transactionRepository.save(transaction);
+        }
+
+        CoinRequest request = coinRequestRepository.findById(requestId).orElse(null);
+        notifyDepositRejected(request, reason);
+
+        log.info("Coin request {} rejected by {}: {}", requestId, approverId, reason);
+    }
+
+    @Transactional(transactionManager = "tenantTransactionManager", readOnly = true)
+    public List<TransactionResponse> getAllTransactions() {
+        return transactionRepository.findAllByOrderByCreatedAtDesc().stream()
+                .map(tenantMapper::toDto)
+                .toList();
+    }
+
+    @Transactional(transactionManager = "tenantTransactionManager", readOnly = true)
+    public List<CoinRequestResponse> getPendingCoinRequestsForAdmin(Long adminUserId) {
+        List<Player> players = playerRepository.findByAdminUserId(adminUserId);
+        List<Long> playerIds = players.stream().map(Player::getUserId).toList();
+
+        return coinRequestRepository.findByUserIdInAndStatus(playerIds, RequestStatus.PENDING).stream()
+                .map(tenantMapper::toDto)
+                .toList();
+    }
+
+    @Transactional(transactionManager = "tenantTransactionManager", readOnly = true)
+    public long countPendingCoinRequestsForAdmin(Long adminUserId) {
+        List<Player> players = playerRepository.findByAdminUserId(adminUserId);
+        List<Long> playerIds = players.stream().map(Player::getUserId).toList();
+        if (playerIds.isEmpty()) return 0L;
+        return coinRequestRepository.countByUserIdInAndStatus(playerIds, RequestStatus.PENDING);
+    }
+
+    @Transactional(transactionManager = "tenantTransactionManager", readOnly = true)
+    public long countPendingWithdrawalsForAdmin(Long adminUserId) {
+        List<Player> players = playerRepository.findByAdminUserId(adminUserId);
+        List<Long> playerIds = players.stream().map(Player::getUserId).toList();
+        if (playerIds.isEmpty()) return 0L;
+        return withdrawalRepository.countByUserIdInAndStatus(playerIds, RequestStatus.PENDING);
+    }
+
+    @Transactional(transactionManager = "tenantTransactionManager", readOnly = true)
+    public List<CoinRequestResponse> getCoinRequestsByUser(Long userId) {
+        return coinRequestRepository.findByUserIdOrderByCreatedAtDesc(userId).stream()
+                .map(tenantMapper::toDto)
+                .toList();
+    }
+
+    // =========================================================
+    // ADMIN FUND REQUEST METHODS (Admin → Super Admin)
+    // =========================================================
+
+    @Transactional(transactionManager = "tenantTransactionManager")
+    public AdminFundRequest requestAdminFund(Long adminUserId, BigDecimal amount, String screenshotUrl) {
+        User admin = userRepository.findById(adminUserId)
+                .orElseThrow(() -> new WalletException("Admin not found"));
+
+        if (admin.getRole() != Role.ADMIN) {
+            throw new WalletException("Only admins can request funds");
+        }
+
+        if (amount.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new WalletException("Amount must be positive");
+        }
+
+        AdminFundRequest request = AdminFundRequest.builder()
+                .adminUserId(adminUserId)
+                .amount(amount)
+                .screenshotUrl(screenshotUrl)
+                .status(FundStatus.PENDING)
+                .createdAt(LocalDateTime.now())
+                .build();
+
+        AdminFundRequest saved = adminFundRequestRepository.save(request);
+
+        notifyFundRequestCreated(saved);
+
+        log.info("Admin {} requested fund of amount {} from super admin", adminUserId, amount);
+        return saved;
+    }
+
+    // Not transactional as a whole: the request/admin live in the master DB while the
+    // ledger lives in the agent's tenant DB, and the two cannot share one transaction.
+    public void approveAdminFundRequest(Long requestId, Long superAdminId) {
+        User superAdmin = userRepository.findById(superAdminId)
+                .orElseThrow(() -> new WalletException("Super admin not found"));
+
+        if (superAdmin.getRole() != Role.SUPER_ADMIN) {
+            throw new WalletException("Only super admin can approve admin fund requests");
+        }
+
+        AdminFundRequest request = adminFundRequestRepository.findById(requestId)
+                .orElseThrow(() -> new WalletException("Fund request not found"));
+
+        if (request.getStatus() != FundStatus.PENDING) {
+            throw new RequestAlreadyProcessedException("Request already processed");
+        }
+
+        User admin = userRepository.findById(request.getAdminUserId())
+                .orElseThrow(() -> new WalletException("Admin not found"));
+
+        // Atomic claim: a concurrent/double approval can never proceed past this line.
+        if (adminFundRequestRepository.claimForProcessing(requestId, FundStatus.APPROVED,
+                FundStatus.PENDING, superAdminId, LocalDateTime.now(), null) == 0) {
+            throw new RequestAlreadyProcessedException("Request already processed");
+        }
+
+        try {
+            admin.setBalance(admin.getBalance().add(request.getAmount()));
+            userRepository.save(admin);
+        } catch (Exception e) {
+            // Compensation: do not leave the request approved without the credit.
+            revertFundRequestClaim(requestId);
+            throw e;
+        }
+
+        recordTenantLedger(request.getAdminUserId(), admin.getId(), TransactionType.FUND_SUPER_ADMIN_TO_AGENT,
+                request.getAmount(), requestId, "Approved fund request for admin " + request.getAdminUserId());
+        recordTenantLedger(request.getAdminUserId(), request.getAdminUserId(), TransactionType.DEPOSIT,
+                request.getAmount(), requestId, "Fund request approved by super admin");
+
+        notifyFundRequestApproved(admin, request.getAmount(), requestId);
+
+        log.info("Admin fund request {} approved by super admin {} — admin {} funded with {}",
+                requestId, superAdminId, request.getAdminUserId(), request.getAmount());
+    }
+
+    private void revertFundRequestClaim(Long requestId) {
+        try {
+            adminFundRequestRepository.claimForProcessing(requestId, FundStatus.PENDING,
+                    FundStatus.APPROVED, null, null, null);
+        } catch (Exception revertEx) {
+            log.error("CRITICAL: failed to revert fund request {} to PENDING after a failed credit", requestId, revertEx);
+        }
+    }
+
+    /**
+     * Writes a ledger row into the owning agent's tenant DB. Best-effort: funding must
+     * not fail (or roll back) just because the audit ledger write fails.
+     */
+    private void recordTenantLedger(Long adminUserId, Long userId, TransactionType type, BigDecimal amount,
+                                    Long referenceId, String description) {
+        try {
+            TenantContext.setTenant(TenantContext.tenantKeyForAdmin(adminUserId));
+            createTransaction(userId, type, amount, TransactionStatus.COMPLETED, referenceId, description);
+        } catch (Exception e) {
+            log.error("Failed to record {} ledger entry for user {} in tenant DB", type, userId, e);
+        } finally {
+            TenantContext.clear();
+        }
+    }
+
+    @Transactional(transactionManager = "tenantTransactionManager")
+    public void rejectAdminFundRequest(Long requestId, Long superAdminId, String reason) {
+        // Atomic claim: a concurrent/double rejection can never proceed past this line.
+        if (adminFundRequestRepository.claimForProcessing(requestId, FundStatus.REJECTED,
+                FundStatus.PENDING, superAdminId, LocalDateTime.now(), reason) == 0) {
+            throw new RequestAlreadyProcessedException("Request already processed");
+        }
+
+        var rejectedRequest = adminFundRequestRepository.findById(requestId).orElse(null);
+        if (rejectedRequest != null) {
+            notifyFundRequestRejected(rejectedRequest.getAdminUserId(), rejectedRequest.getAmount(), reason);
+        }
+
+        log.info("Admin fund request {} rejected by super admin {}: {}", requestId, superAdminId, reason);
+    }
+
+    @Transactional(transactionManager = "tenantTransactionManager", readOnly = true)
+    public List<AdminFundRequest> getPendingAdminFundRequests() {
+        return adminFundRequestRepository.findByStatusOrderByCreatedAtDesc(FundStatus.PENDING);
+    }
+
+    @Transactional(transactionManager = "tenantTransactionManager", readOnly = true)
+    public List<AdminFundRequest> getAdminFundRequestsByAdmin(Long adminUserId) {
+        return adminFundRequestRepository.findByAdminUserIdOrderByCreatedAtDesc(adminUserId);
+    }
+
+    // =========================================================
+    // GAME RELATED METHODS
+    // =========================================================
+
+    @Transactional(transactionManager = "tenantTransactionManager")
+    public void deductBet(Long playerId, BigDecimal amount, Long gameId) {
+        playerService.deductBalance(playerId, amount);
+
+        createTransaction(playerId, TransactionType.BET, amount,
+                TransactionStatus.COMPLETED, gameId, "Bet placed for game " + gameId);
+    }
+
+    @Transactional(transactionManager = "tenantTransactionManager")
+    public void creditWinnings(Long playerId, BigDecimal amount, Long gameId) {
+        playerService.addBalance(playerId, amount);
+
+        createTransaction(playerId, TransactionType.WIN, amount,
+                TransactionStatus.COMPLETED, gameId, "Won from game " + gameId);
+
+        notifyGameWin(playerId, amount, gameId);
+    }
+
+    @Transactional(transactionManager = "tenantTransactionManager")
+    public void refundPlayer(Long playerId, BigDecimal amount, Long gameId) {
+        playerService.addBalance(playerId, amount);
+
+        createTransaction(playerId, TransactionType.REFUND, amount,
+                TransactionStatus.COMPLETED, gameId, "Entry fee refund for ended game " + gameId);
+    }
+
+    @Transactional(transactionManager = "tenantTransactionManager")
+    public void creditAgentCommission(Long adminUserId, BigDecimal amount, Long gameId) {
+        User admin = userRepository.findById(adminUserId)
+                .orElseThrow(() -> new WalletException("Admin not found"));
+
+        admin.setBalance(admin.getBalance().add(amount));
+        userRepository.save(admin);
+
+        createTransaction(adminUserId, TransactionType.AGENT_COMMISSION, amount,
+                TransactionStatus.COMPLETED, gameId, "Agent commission from game " + gameId);
+
+        notifyCommissionCredited(adminUserId, amount, gameId);
+    }
+
+
+    @Transactional(transactionManager = "tenantTransactionManager")
+
+    // =========================================================
+    // PRIVATE HELPER METHODS
+    // =========================================================
+
+    private void createTransaction(Long userId, TransactionType type, BigDecimal amount,
+                                   TransactionStatus status, Long referenceId, String description) {
+        Transaction transaction = Transaction.builder()
+                .userId(userId)
+                .type(type.name())
+                .amount(amount)
+                .status(status)
+                .referenceId(referenceId)
+                .description(description)
+                .createdAt(LocalDateTime.now())
+                .build();
+
+        transactionRepository.save(transaction);
+    }
+
+    // =========================================================
+    // NOTIFICATION HELPERS
+    // =========================================================
+
+    private String fmt(BigDecimal amount) {
+        return amount.stripTrailingZeros().toPlainString();
+    }
+
+    private String playerDisplayName(Long userId) {
+        return userRepository.findById(userId)
+                .map(u -> {
+                    if (u.getFirstName() != null && !u.getFirstName().isBlank()) {
+                        return u.getFirstName() + (u.getLastName() != null && !u.getLastName().isBlank() ? " " + u.getLastName() : "");
+                    }
+                    return u.getUsername() != null ? u.getUsername() : "Player #" + userId;
+                })
+                .orElse("Player #" + userId);
+    }
+
+    private void notify(Long userId, String type, String title, String body,
+                        String referenceType, Long referenceId, String telegramText) {
+        try {
+            notificationService.notify(userId, type, title, body, referenceType, referenceId, telegramText);
+        } catch (Exception e) {
+            log.warn("Failed to create notification (type={}, userId={}): {}", type, userId, e.getMessage());
+        }
+    }
+
+    private void notifyDepositRequested(Player player, CoinRequest request) {
+        Long adminUserId = player.getAdminUserId();
+        if (adminUserId == null) return;
+        String playerName = playerDisplayName(request.getUserId());
+        notify(adminUserId, "DEPOSIT_REQUEST",
+                "New deposit request",
+                playerName + " requested a deposit of " + fmt(request.getAmount()) + " coins.",
+                "COIN_REQUEST", request.getId(),
+                "\uD83D\uDCC8 Deposit request\n" + playerName + " wants " + fmt(request.getAmount()) + " coins. Approve it in the app.");
+    }
+
+    private void notifyDepositApproved(CoinRequest request) {
+        String amount = fmt(request.getAmount());
+        notify(request.getUserId(), "DEPOSIT_APPROVED",
+                "Deposit approved",
+                "Your deposit of " + amount + " coins has been approved and credited to your balance.",
+                "COIN_REQUEST", request.getId(),
+                "\u2705 Deposit approved\n" + amount + " coins have been added to your balance. Good luck!");
+    }
+
+    private void notifyDepositRejected(CoinRequest request, String reason) {
+        if (request == null) return;
+        String amount = fmt(request.getAmount());
+        String why = (reason == null || reason.isBlank()) ? "Please contact support." : reason;
+        notify(request.getUserId(), "DEPOSIT_REJECTED",
+                "Deposit rejected",
+                "Your deposit of " + amount + " coins was rejected. Reason: " + why,
+                "COIN_REQUEST", request.getId(),
+                "\u274C Deposit rejected\n" + amount + " coins request was declined.\nReason: " + why);
+    }
+
+    private void notifyWithdrawalRequested(Player player, Withdrawal withdrawal) {
+        Long adminUserId = player.getAdminUserId();
+        if (adminUserId == null) return;
+        String playerName = playerDisplayName(withdrawal.getUserId());
+        notify(adminUserId, "WITHDRAWAL_REQUEST",
+                "New withdrawal request",
+                playerName + " requested a withdrawal of " + fmt(withdrawal.getAmount()) + " coins.",
+                "WITHDRAWAL", withdrawal.getId(),
+                "\uD83D\uDCB5 Withdrawal request\n" + playerName + " wants to withdraw " + fmt(withdrawal.getAmount()) + " coins. Review it in the app.");
+    }
+
+    private void notifyWithdrawalApproved(Withdrawal withdrawal) {
+        String amount = fmt(withdrawal.getAmount());
+        notify(withdrawal.getUserId(), "WITHDRAWAL_APPROVED",
+                "Withdrawal paid",
+                "Your withdrawal of " + amount + " coins has been approved and paid out.",
+                "WITHDRAWAL", withdrawal.getId(),
+                "\u2705 Withdrawal paid\n" + amount + " coins have been paid out. Thank you for playing!");
+    }
+
+    private void notifyWithdrawalRejected(Withdrawal withdrawal, String reason) {
+        String amount = fmt(withdrawal.getAmount());
+        String why = (reason == null || reason.isBlank()) ? "Please contact support." : reason;
+        notify(withdrawal.getUserId(), "WITHDRAWAL_REJECTED",
+                "Withdrawal rejected",
+                "Your withdrawal of " + amount + " coins was rejected. Reason: " + why,
+                "WITHDRAWAL", withdrawal.getId(),
+                "\u274C Withdrawal rejected\n" + amount + " coins.\nReason: " + why);
+    }
+
+    private void notifyPlayerFunded(Long playerId, Long adminUserId, BigDecimal amount) {
+        notify(playerId, "PLAYER_FUNDED",
+                "You received coins",
+                "You received " + fmt(amount) + " coins from " + playerDisplayName(adminUserId) + ".",
+                null, null,
+                "\uD83D\uDCB0 Coins credited\n" + fmt(amount) + " coins have been added to your balance.");
+    }
+
+    private void notifyAdminFunded(Long adminUserId, BigDecimal amount) {
+        notify(adminUserId, "ADMIN_FUNDED",
+                "Funds added",
+                "Your balance was topped up by " + fmt(amount) + " coins.",
+                null, null,
+                "\uD83D\uDCB0 Funds added\n" + fmt(amount) + " coins have been credited to your account.");
+    }
+
+    private void notifyFundRequestCreated(AdminFundRequest request) {
+        String adminName = playerDisplayName(request.getAdminUserId());
+        String amount = fmt(request.getAmount());
+        for (User superAdmin : userRepository.findAllByRole(Role.SUPER_ADMIN)) {
+            notify(superAdmin.getId(), "FUND_REQUEST",
+                    "Admin fund request",
+                    adminName + " requested " + amount + " coins.",
+                    "ADMIN_FUND_REQUEST", request.getId(), null);
+        }
+    }
+
+    private void notifyFundRequestApproved(User admin, BigDecimal amount, Long requestId) {
+        notify(admin.getId(), "FUND_REQUEST_APPROVED",
+                "Fund request approved",
+                "Your request for " + fmt(amount) + " coins was approved and credited.",
+                "ADMIN_FUND_REQUEST", requestId,
+                "\u2705 Fund request approved\n" + fmt(amount) + " coins have been credited to your account.");
+    }
+
+    private void notifyFundRequestRejected(Long adminUserId, BigDecimal requestAmount, String reason) {
+        String why = (reason == null || reason.isBlank()) ? "Please contact support." : reason;
+        notify(adminUserId, "FUND_REQUEST_REJECTED",
+                "Fund request rejected",
+                "Your fund request for " + fmt(requestAmount) + " coins was rejected. Reason: " + why,
+                null, null,
+                "\u274C Fund request rejected\n" + fmt(requestAmount) + " coins.\nReason: " + why);
+    }
+
+    private void notifyGameWin(Long playerId, BigDecimal amount, Long gameId) {
+        notify(playerId, "WIN",
+                "You won!",
+                "Congratulations! You won " + fmt(amount) + " coins.",
+                "GAME", gameId,
+                "\uD83C\uDF89 You won!\n" + fmt(amount) + " coins were credited to your balance. Congrats!");
+    }
+
+    private void notifyCommissionCredited(Long adminUserId, BigDecimal amount, Long gameId) {
+        notify(adminUserId, "COMMISSION_CREDITED",
+                "Commission credited",
+                "You earned " + fmt(amount) + " coins as commission from Game #" + gameId + ".",
+                "GAME", gameId, null);
+    }
+
+    /**
+     * Total commission earned by the current tenant's agent (scoped to the active
+     * tenant context). Used for platform-level super-admin reporting.
+     */
+    @Transactional(transactionManager = "tenantTransactionManager", readOnly = true)
+    public BigDecimal getTotalCommissionInTenant() {
+        return sumAmounts(transactionRepository.findByType(TransactionType.AGENT_COMMISSION.name()))
+                .add(sumAmounts(transactionRepository.findByType(TransactionType.UNCLAIMED_PRIZE.name())));
+    }
+
+    private BigDecimal sumAmounts(List<Transaction> txns) {
+        return txns.stream()
+                .map(Transaction::getAmount)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+}
