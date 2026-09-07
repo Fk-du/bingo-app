@@ -62,7 +62,9 @@ services:
       - backend
 
   caddy:
-    image: caddy:2-alpine
+    build:
+      context: ./deploy
+      dockerfile: Dockerfile
     restart: unless-stopped
     ports:
       - "80:80"
@@ -71,7 +73,6 @@ services:
       BINGO_DOMAIN: ${BINGO_DOMAIN:?set BINGO_DOMAIN (e.g. bingo.duckdns.org)}
       API_DOMAIN: ${API_DOMAIN:?set API_DOMAIN (e.g. bingo-api.duckdns.org)}
     volumes:
-      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
       - caddy_config:/config
     depends_on:
