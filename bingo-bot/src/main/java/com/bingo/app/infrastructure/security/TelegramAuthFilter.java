@@ -50,6 +50,17 @@ public class TelegramAuthFilter extends OncePerRequestFilter {
                         return;
                     }
 
+                    // Admins that have not been approved by the super admin are locked
+                    // down: they may log in (so the app can tell them approval is
+                    // pending) but every admin endpoint — player invites, games, funds,
+                    // broadcasts — stays blocked until the super admin approves them.
+                    if (!UserPrincipal.isApproved(user) && !isPendingApprovalAllowedPath(request)) {
+                        log.warn("Blocked unapproved ADMIN: {} (role={}, approved={})",
+                                user.getTelegramId(), user.getRole(), user.isAdminApproved());
+                        writePendingApproval(response, user);
+                        return;
+                    }
+
                     UserPrincipal principal = new UserPrincipal(user);
                     UsernamePasswordAuthenticationToken auth =
                             new UsernamePasswordAuthenticationToken(principal, null, principal.getAuthorities());
@@ -69,10 +80,34 @@ public class TelegramAuthFilter extends OncePerRequestFilter {
         }
     }
 
+    /**
+     * Endpoints a not-yet-approved admin may still reach. Login returns their
+     * profile (carrying {@code adminApproved=false}) so the app can show the
+     * pending-approval screen, and {@code /users/me} re-reads it.
+     */
+    private boolean isPendingApprovalAllowedPath(HttpServletRequest request) {
+        String path = request.getRequestURI();
+        return path.equals("/api/v1/auth/login") || path.equals("/api/v1/users/me");
+    }
+
     private void writeForbidden(HttpServletResponse response, User user)
             throws IOException {
         String message = "Account is suspended";
         String userMessage = "Your account has been suspended. Contact the platform owner for details.";
+        response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+        response.setContentType("application/json");
+        response.getWriter().write(new ObjectMapper().writeValueAsString(
+                Map.of(
+                        "message", message,
+                        "userMessage", userMessage,
+                        "status", HttpServletResponse.SC_FORBIDDEN
+                )));
+    }
+
+    private void writePendingApproval(HttpServletResponse response, User user)
+            throws IOException {
+        String message = "Account pending approval";
+        String userMessage = "Your admin account is awaiting approval from the super admin. You cannot use admin features until your account is approved.";
         response.setStatus(HttpServletResponse.SC_FORBIDDEN);
         response.setContentType("application/json");
         response.getWriter().write(new ObjectMapper().writeValueAsString(

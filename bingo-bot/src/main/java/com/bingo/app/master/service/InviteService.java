@@ -43,6 +43,11 @@ public class InviteService {
         User creator = userRepository.findById(creatorId)
                 .orElseThrow(() -> new RuntimeException("User not found"));
 
+        if (creator.getRole() == Role.ADMIN && !creator.isAdminApproved()) {
+            throw new RuntimeException(
+                    "Your admin account is awaiting super admin approval. You cannot generate invite links until your account is approved.");
+        }
+
         Role targetRole = creator.getRole() == Role.SUPER_ADMIN ? Role.ADMIN : Role.PLAYER;
 
         // Admin player invites are permanent — reuse existing active code if any

@@ -71,4 +71,21 @@ public class UserPrincipal implements UserDetails {
         }
         return user.isActive();
     }
+
+    /**
+     * Whether a user may perform platform activities. Admins are onboarding-gated:
+     * an {@link Role#ADMIN} that has not yet been approved by the super admin may
+     * log in (to see their status) but cannot use any admin capability — generating
+     * player invite links, managing games, funding, broadcasts, etc. — until the
+     * super admin approves their account. Super-admins and players are unaffected.
+     */
+    public static boolean isApproved(User user) {
+        if (user == null) {
+            return false;
+        }
+        if (user.getRole() == Role.ADMIN) {
+            return user.isAdminApproved();
+        }
+        return true;
+    }
 }

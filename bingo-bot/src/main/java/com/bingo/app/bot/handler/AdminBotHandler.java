@@ -20,6 +20,16 @@ public class AdminBotHandler {
         String data = ctx.getData();
         log.info("AdminBotHandler handling: {}", data);
 
+        // Block unapproved admins: no player invites or any admin action until the
+        // super admin approves the account.
+        if (!ctx.getUser().isAdminApproved()) {
+            sendMessage(ctx.getBot(), ctx.getChatId(),
+                    "⏳ Your admin account is awaiting super admin approval.\n\n" +
+                            "You cannot generate player invite links or manage your room " +
+                            "until the super admin approves your account.");
+            return;
+        }
+
         switch (data) {
             case BotConstants.INVITE_LINK -> handleInviteLink(ctx);
             default -> sendMessage(ctx.getBot(), ctx.getChatId(), "Unknown action. Use the Launch App button to manage your games.");

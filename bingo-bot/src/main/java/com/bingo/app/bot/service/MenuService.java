@@ -44,6 +44,13 @@ public class MenuService {
                 keyboard.add(createRow(createWebAppButton("🚀 Launch App")));
             }
             case ADMIN -> {
+                if (!user.isAdminApproved()) {
+                    message.setText("⏳ *Account awaiting approval*\n\n" +
+                            "Your admin account is pending super admin approval. You cannot generate " +
+                            "player invite links or manage your room until the super admin approves " +
+                            "your account. Please check back later.");
+                    break;
+                }
                 message.setText("🎯 Admin Dashboard\n\nManage your games in the app or generate an invite link for players.");
                 keyboard.add(createRow(createButton("🔗 Invite Link", BotConstants.INVITE_LINK)));
                 keyboard.add(createRow(createWebAppButton("🚀 Launch App")));
