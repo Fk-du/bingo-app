@@ -58,7 +58,7 @@ public class MenuService {
                     break;
                 }
                 message.setText("🎯 Admin Dashboard\n\nManage your games in the app or generate an invite link for players.");
-                keyboard.add(createRow(createButton("🔗 Invite Link", BotConstants.INVITE_LINK)));
+                keyboard.add(createRow(createButton(BotConstants.BTN_INVITE_LINK)));
                 keyboard.add(createRow(createWebAppButton("🚀 Launch App")));
             }
             case SUPER_ADMIN -> {

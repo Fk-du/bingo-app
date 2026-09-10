@@ -6,7 +6,7 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-bingo}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set Fk@123postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD not set}
       POSTGRES_DB: bingo_master
     volumes:
       - pgdata:/var/lib/postgresql/data
@@ -49,8 +49,6 @@ services:
     build:
       context: ./bingo-app-front
       dockerfile: Dockerfile
-      args:
-        BACKEND_ORIGIN: http://backend:8080
     restart: unless-stopped
     environment:
       NODE_ENV: production
