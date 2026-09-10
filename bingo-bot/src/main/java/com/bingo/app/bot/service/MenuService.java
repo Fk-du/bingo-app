@@ -1,7 +1,6 @@
 package com.bingo.app.bot.service;
 
 import com.bingo.app.master.entity.User;
-import com.bingo.app.master.enums.Role;
 import com.bingo.app.bot.BingoTelegramBot;
 import com.bingo.app.bot.BotConstants;
 import lombok.RequiredArgsConstructor;
@@ -11,8 +10,9 @@ import org.springframework.stereotype.Service;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
 import org.telegram.telegrambots.meta.api.objects.Update;
 import org.telegram.telegrambots.meta.api.objects.webapp.WebAppInfo;
-import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup;
-import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKeyboardButton;
+import org.telegram.telegrambots.meta.api.objects.replykeyboard.ReplyKeyboardMarkup;
+import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.KeyboardButton;
+import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.KeyboardRow;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -25,6 +25,12 @@ public class MenuService {
     @Value("${bingo.webapp.url}")
     private String webAppUrl;
 
+    /**
+     * Shows the role menu as a persistent reply keyboard. The keyboard stays on
+     * screen, so users never need to type a command — pressing a button sends its
+     * label back as a plain text message, which UpdateHandler routes to the same
+     * action handlers as callback queries.
+     */
     public void showMenu(BingoTelegramBot bot, Update update, User user) {
         Long chatId = update.getMessage() != null ?
                 update.getMessage().getChatId() :
@@ -33,15 +39,15 @@ public class MenuService {
         SendMessage message = new SendMessage();
         message.setChatId(chatId.toString());
 
-        InlineKeyboardMarkup markup = new InlineKeyboardMarkup();
-        List<List<InlineKeyboardButton>> keyboard = new ArrayList<>();
+        ReplyKeyboardMarkup markup = new ReplyKeyboardMarkup();
+        List<KeyboardRow> keyboard = new ArrayList<>();
 
         switch (user.getRole()) {
             case PLAYER -> {
-                message.setText("🎮 Welcome to BingoPlus!\n\nUse the buttons below to check your balance or view your active game, or launch the app.");
-                keyboard.add(createRow(createButton("💰 Check Balance", BotConstants.CHECK_BALANCE)));
-                keyboard.add(createRow(createButton("🎮 Active Game", BotConstants.ACTIVE_GAME)));
-                keyboard.add(createRow(createWebAppButton("🚀 Launch App")));
+                message.setText("\uD83C\uDFAE Welcome to BingoPlus!\n\nUse the menu below to check your balance or active game, or launch the app. No need to type anything.");
+                keyboard.add(createRow(createButton(BotConstants.BTN_CHECK_BALANCE)));
+                keyboard.add(createRow(createButton(BotConstants.BTN_ACTIVE_GAME)));
+                keyboard.add(createRow(createWebAppButton(BotConstants.BTN_LAUNCH_APP)));
             }
             case ADMIN -> {
                 if (!user.isAdminApproved()) {
@@ -56,13 +62,16 @@ public class MenuService {
                 keyboard.add(createRow(createWebAppButton("🚀 Launch App")));
             }
             case SUPER_ADMIN -> {
-                message.setText("👑 Super Admin Panel\n\nManage your platform in the app or generate an admin invite link.");
-                keyboard.add(createRow(createButton("🚀 Create Admin", BotConstants.CREATE_ADMIN)));
-                keyboard.add(createRow(createWebAppButton("🚀 Launch App")));
+                message.setText("\uD83D\uDC51 Super Admin Panel\n\nManage your platform in the app or generate an admin invite link.");
+                keyboard.add(createRow(createButton(BotConstants.BTN_CREATE_ADMIN)));
+                keyboard.add(createRow(createWebAppButton(BotConstants.BTN_LAUNCH_APP)));
             }
         }
 
         markup.setKeyboard(keyboard);
+        markup.setResizeKeyboard(true);
+        markup.setOneTimeKeyboard(false);
+        markup.setInputFieldPlaceholder("Tap a menu button");
         message.setReplyMarkup(markup);
         message.setParseMode("Markdown");
 
@@ -73,21 +82,24 @@ public class MenuService {
         }
     }
 
-    private List<InlineKeyboardButton> createRow(InlineKeyboardButton... buttons) {
-        return List.of(buttons);
+    private KeyboardRow createRow(KeyboardButton... buttons) {
+        KeyboardRow row = new KeyboardRow();
+        for (KeyboardButton button : buttons) {
+            row.add(button);
+        }
+        return row;
     }
 
-    private InlineKeyboardButton createButton(String text, String callbackData) {
-        InlineKeyboardButton button = new InlineKeyboardButton();
-        button.setText(text);
-        button.setCallbackData(callbackData);
-        return button;
+    private KeyboardButton createButton(String text) {
+        return KeyboardButton.builder()
+                .text(text)
+                .build();
     }
 
-    private InlineKeyboardButton createWebAppButton(String text) {
-        InlineKeyboardButton button = new InlineKeyboardButton();
-        button.setText(text);
-        button.setWebApp(new WebAppInfo(webAppUrl));
-        return button;
+    private KeyboardButton createWebAppButton(String text) {
+        return KeyboardButton.builder()
+                .text(text)
+                .webApp(new WebAppInfo(webAppUrl))
+                .build();
     }
 }

@@ -1,8 +1,8 @@
 package com.bingo.app.bot.handler;
 
 import com.bingo.app.master.entity.User;
-import com.bingo.app.master.enums.Role;
 import com.bingo.app.master.service.UserService;
+import com.bingo.app.bot.BotConstants;
 import com.bingo.app.bot.callback.CallbackContext;
 import com.bingo.app.bot.callback.CallbackRouter;
 import com.bingo.app.bot.service.MenuService;
@@ -76,28 +76,37 @@ public class UpdateHandler {
 
         log.debug("Text message received: text={}, telegramId={}", text, telegramId);
 
-        // Handle /start command
+        // /start remains the only registration path (invite link deep link).
         if (text.startsWith("/start")) {
             startCommand.handle(update, bot);
             return;
         }
 
-        // Registered user typing to the bot: never leave them stuck —
-        // just show their role menu so they can find the app.
         User user = userService.findByTelegramId(telegramId);
-        if (user != null) {
-            String reply = user.getRole() == Role.PLAYER
-                    ? "Use the menu below to check your balance, view your active game, or open the app."
-                    : "Manage everything from the app — use the menu below to get started.";
-            TenantHelper.runWithTenant(user, () -> {
-                sendMessage(bot, chatId, reply);
-                menuService.showMenu(bot, update, user);
-            });
+        if (user == null) {
+            // Unknown user: guide them to register via /start with an invite.
+            sendMessage(bot, chatId, "Welcome to BingoPlus! To get started, use the /start command with the invite link your admin provided.");
             return;
         }
 
-        // Unknown user: guide them to register via /start with an invite.
-        sendMessage(bot, chatId, "Welcome to BingoPlus! To get started, use the /start command with the invite link your admin provided.");
+        // Menu button pressed: the reply keyboard sends the button label as text.
+        String action = BotConstants.BUTTON_ACTIONS.get(text);
+        if (action != null) {
+            CallbackContext ctx = CallbackContext.builder()
+                    .bot(bot)
+                    .chatId(chatId)
+                    .telegramId(telegramId)
+                    .user(user)
+                    .data(action)
+                    .build();
+            TenantHelper.runWithTenant(user, () -> callbackRouter.route(ctx));
+            return;
+        }
+
+        // Any other typed text (messages or commands): never acted on — just
+        // re-show the menu so users interact with buttons instead.
+        sendMessage(bot, chatId, "Use the menu buttons below — there's nothing to type.");
+        TenantHelper.runWithTenant(user, () -> menuService.showMenu(bot, update, user));
     }
 
     private void sendMessage(BingoTelegramBot bot, Long chatId, String text) {

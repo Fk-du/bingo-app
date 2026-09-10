@@ -9,6 +9,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.util.Map;
 import java.util.stream.Collectors;
 
@@ -37,19 +38,13 @@ public class ConfigService {
     @Value("${app.game.default-max-players:50}")
     private int defaultMaxPlayers;
 
+    @Value("${app.game.min-withdrawal:10}")
+    private int defaultMinWithdrawal;
+
     @PostConstruct
     public void seedDefaults() {
         try {
-            var defaults = Map.of(
-                    "maxWinners", String.valueOf(defaultMaxWinners),
-                    "cardSize", String.valueOf(defaultCardSize),
-                    "numberRange", String.valueOf(defaultNumberRange),
-                    "autoCallInterval", String.valueOf(defaultAutoCallInterval),
-                    "entryFee", String.valueOf(defaultEntryFee),
-                    "maxPlayers", String.valueOf(defaultMaxPlayers)
-            );
-
-            for (var entry : defaults.entrySet()) {
+            for (var entry : defaults().entrySet()) {
                 if (!configRepository.existsById(entry.getKey())) {
                     configRepository.save(new PlatformConfig(entry.getKey(), entry.getValue()));
                     log.info("Seeded default config: {}={}", entry.getKey(), entry.getValue());
@@ -63,11 +58,8 @@ public class ConfigService {
     @Transactional(readOnly = true)
     public Map<String, Object> getAll() {
         try {
+            seedMissingDefaults();
             var entries = configRepository.findAll();
-            if (entries.isEmpty()) {
-                seedDefaults();
-                entries = configRepository.findAll();
-            }
             return entries.stream()
                     .collect(Collectors.toMap(
                             PlatformConfig::getKey,
@@ -77,6 +69,30 @@ public class ConfigService {
             log.warn("Failed to load config from database: {}", e.getMessage());
             return getDefaultMap();
         }
+    }
+
+    private void seedMissingDefaults() {
+        var existing = configRepository.findAll();
+        var existingKeys = existing.stream().map(PlatformConfig::getKey).collect(Collectors.toSet());
+
+        for (var entry : defaults().entrySet()) {
+            if (!existingKeys.contains(entry.getKey())) {
+                configRepository.save(new PlatformConfig(entry.getKey(), entry.getValue()));
+                log.info("Seeded default config: {}={}", entry.getKey(), entry.getValue());
+            }
+        }
+    }
+
+    private Map<String, String> defaults() {
+        return Map.of(
+                "maxWinners", String.valueOf(defaultMaxWinners),
+                "cardSize", String.valueOf(defaultCardSize),
+                "numberRange", String.valueOf(defaultNumberRange),
+                "autoCallInterval", String.valueOf(defaultAutoCallInterval),
+                "entryFee", String.valueOf(defaultEntryFee),
+                "maxPlayers", String.valueOf(defaultMaxPlayers),
+                "minWithdrawal", String.valueOf(defaultMinWithdrawal)
+        );
     }
 
     @Transactional
@@ -89,6 +105,18 @@ public class ConfigService {
         });
     }
 
+    public BigDecimal getMinWithdrawal() {
+        try {
+            Object value = getAll().get("minWithdrawal");
+            if (value instanceof Number number) {
+                return BigDecimal.valueOf(number.doubleValue());
+            }
+        } catch (Exception e) {
+            log.warn("Failed to read minWithdrawal config, using default: {}", e.getMessage());
+        }
+        return BigDecimal.valueOf(defaultMinWithdrawal);
+    }
+
     private Map<String, Object> getDefaultMap() {
         return Map.of(
                 "maxWinners", defaultMaxWinners,
@@ -96,7 +124,8 @@ public class ConfigService {
                 "numberRange", defaultNumberRange,
                 "autoCallInterval", defaultAutoCallInterval,
                 "entryFee", defaultEntryFee,
-                "maxPlayers", defaultMaxPlayers
+                "maxPlayers", defaultMaxPlayers,
+                "minWithdrawal", defaultMinWithdrawal
         );
     }
 

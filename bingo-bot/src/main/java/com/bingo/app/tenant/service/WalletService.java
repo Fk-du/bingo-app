@@ -24,6 +24,7 @@ import com.bingo.app.tenant.repository.CoinRequestRepository;
 import com.bingo.app.tenant.repository.PlayerRepository;
 import com.bingo.app.tenant.repository.TransactionRepository;
 import com.bingo.app.tenant.repository.WithdrawalRepository;
+import com.bingo.app.master.service.ConfigService;
 import com.bingo.app.master.service.NotificationService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -48,6 +49,7 @@ public class WalletService {
     private final AdminFundRequestRepository adminFundRequestRepository;
     private final TenantMapper tenantMapper;
     private final NotificationService notificationService;
+    private final ConfigService configService;
 
     // =========================================================
     // PLAYER METHODS
@@ -60,6 +62,12 @@ public class WalletService {
 
         if (amount.compareTo(BigDecimal.ZERO) <= 0) {
             throw new WalletException("Amount must be positive");
+        }
+
+        if (screenshotUrl == null || screenshotUrl.isBlank()) {
+            notifyMissingPaymentScreenshot(playerId, amount);
+            throw new WalletException("Payment screenshot is required",
+                    "Attach your payment screenshot before submitting the deposit request.");
         }
 
         CoinRequest request = CoinRequest.builder()
@@ -88,6 +96,13 @@ public class WalletService {
 
         if (amount.compareTo(BigDecimal.ZERO) <= 0) {
             throw new WalletException("Amount must be positive");
+        }
+
+        BigDecimal minWithdrawal = configService.getMinWithdrawal();
+        if (amount.compareTo(minWithdrawal) < 0) {
+            notifyMinWithdrawalViolation(playerId, amount, minWithdrawal);
+            throw new WalletException("Withdrawal amount below minimum",
+                    "Minimum withdrawal is " + minWithdrawal.stripTrailingZeros().toPlainString() + " coins. You requested " + amount.stripTrailingZeros().toPlainString() + ".");
         }
 
         if (player.getBalance().compareTo(amount) < 0) {
@@ -289,7 +304,12 @@ public class WalletService {
             throw new WalletException("Only admins can approve coin requests");
         }
         if (approver.getBalance().compareTo(request.getAmount()) < 0) {
-            throw new WalletException("Insufficient balance to approve request");
+            notifyInsufficientCredit(approver, request);
+            throw new WalletException("Insufficient balance to approve request",
+                    "You don't have enough credit to approve this deposit of "
+                            + fmt(request.getAmount()) + " coins. Your balance is "
+                            + fmt(approver.getBalance())
+                            + ". Request funds and approve it again once credited.");
         }
 
         // Atomic claim: a concurrent/double approval can never proceed past this line.
@@ -608,6 +628,34 @@ public class WalletService {
         } catch (Exception e) {
             log.warn("Failed to create notification (type={}, userId={}): {}", type, userId, e.getMessage());
         }
+    }
+
+    private void notifyInsufficientCredit(User approver, CoinRequest request) {
+        String amount = fmt(request.getAmount());
+        String balance = fmt(approver.getBalance());
+        notify(approver.getId(), "INSUFFICIENT_CREDIT",
+                "Not enough credit to approve deposit",
+                "This deposit request needs " + amount + " coins, but your balance is " + balance + ". Top up your balance, then approve the request again.",
+                "COIN_REQUEST", request.getId(),
+                "\u26A0\uFE0F Not enough credit\nDeposit request: " + amount + " coins, your balance: " + balance + ".\nTop up your balance, then approve the request in the app.");
+    }
+
+    private void notifyMinWithdrawalViolation(Long playerId, BigDecimal requested, BigDecimal minimum) {
+        String requestedStr = fmt(requested);
+        String minStr = fmt(minimum);
+        notify(playerId, "MIN_WITHDRAWAL",
+                "Withdrawal below minimum",
+                "Minimum withdrawal is " + minStr + " coins. You requested " + requestedStr + " coins, so the request was not submitted.",
+                "WITHDRAWAL", null,
+                "\u26A0\uFE0F Withdrawal below minimum\nMinimum: " + minStr + " coins, requested: " + requestedStr + ".\nRaise the amount and try again in the app.");
+    }
+
+    private void notifyMissingPaymentScreenshot(Long playerId, BigDecimal amount) {
+        notify(playerId, "MISSING_PAYMENT_SCREENSHOT",
+                "Payment screenshot required",
+                "Your deposit request of " + fmt(amount) + " coins was not submitted because no payment screenshot was attached. Attach your payment proof and try again.",
+                "COIN_REQUEST", null,
+                "\uD83D\uDDBC\uFE0F Screenshot required\nAttach your payment screenshot and submit the deposit of " + fmt(amount) + " coins again in the app.");
     }
 
     private void notifyDepositRequested(Player player, CoinRequest request) {
