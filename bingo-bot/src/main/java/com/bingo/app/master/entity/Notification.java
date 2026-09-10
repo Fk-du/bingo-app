@@ -1,5 +1,7 @@
 package com.bingo.app.master.entity;
 
+import com.bingo.app.common.jackson.LocalDateTimeZoneSerializer;
+import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -39,9 +41,11 @@ public class Notification {
     @Column(name = "reference_id")
     private Long referenceId;
 
+    @JsonSerialize(using = LocalDateTimeZoneSerializer.class)
     @Column(name = "read_at")
     private LocalDateTime readAt;
 
+    @JsonSerialize(using = LocalDateTimeZoneSerializer.class)
     @Builder.Default
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt = LocalDateTime.now();

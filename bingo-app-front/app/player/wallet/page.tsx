@@ -40,12 +40,14 @@ export default function WalletPage() {
   const submitRequest = async (coins: number) => {
     setError(null);
     setSuccess(null);
+    if (!file) {
+      setPendingConfirm(null);
+      setError('Attach your payment screenshot before submitting the deposit request.');
+      return;
+    }
     try {
-      let screenshotUrl: string | undefined;
-      if (file) {
-        const res = await uploadScreenshot(file);
-        screenshotUrl = res.data;
-      }
+      const res = await uploadScreenshot(file);
+      const screenshotUrl = res.data;
       topUp(
         { amount: coins, screenshotUrl },
         {
@@ -164,12 +166,13 @@ export default function WalletPage() {
               </ActionButton>
             </form>
             <div className="mt-3">
-              <label className="text-xs text-bp-muted">
-                Payment screenshot (optional)
+              <label className="text-xs font-medium text-bp-text">
+                Payment screenshot <span className="text-bp-gold">*</span>
                 <input
                   ref={fileInputRef}
                   type="file"
                   accept="image/jpeg,image/png,image/webp"
+                  required
                   onChange={(e) => setFile(e.target.files?.[0] ?? null)}
                   className="mt-1 block w-full rounded-lg border border-bp-border bg-bp-bg px-2 py-1.5 text-xs text-bp-text file:mr-2 file:rounded-md file:border-0 file:bg-slate-800 file:px-2 file:py-1 file:text-xs file:text-slate-200"
                 />

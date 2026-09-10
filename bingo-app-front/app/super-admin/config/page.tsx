@@ -13,6 +13,7 @@ const FIELD_HINTS: Record<string, string> = {
   autoCallInterval: 'Auto-call interval in ms (e.g. 5000)',
   entryFee: 'Default entry fee per game',
   maxPlayers: 'Default max players per game',
+  minWithdrawal: 'Minimum amount a player can request for withdrawal',
 };
 
 const FIELD_LABELS: Record<string, string> = {
@@ -22,6 +23,7 @@ const FIELD_LABELS: Record<string, string> = {
   autoCallInterval: 'Auto Call Interval (ms)',
   entryFee: 'Default Entry Fee',
   maxPlayers: 'Default Max Players',
+  minWithdrawal: 'Minimum Withdrawal',
 };
 
 export default function ConfigPage() {

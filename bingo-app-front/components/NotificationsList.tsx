@@ -26,6 +26,9 @@ const TYPE_COLORS: Record<string, string> = {
   [NotificationType.WITHDRAWAL_REJECTED]: 'text-red-500',
   [NotificationType.FUND_REQUEST_REJECTED]: 'text-red-500',
   [NotificationType.ADMIN_REJECTED]: 'text-red-500',
+  [NotificationType.INSUFFICIENT_CREDIT]: 'text-bp-gold',
+  [NotificationType.MIN_WITHDRAWAL]: 'text-bp-gold',
+  [NotificationType.MISSING_PAYMENT_SCREENSHOT]: 'text-bp-gold',
   [NotificationType.NEW_PLAYER]: 'text-bp-primary',
 };
 
