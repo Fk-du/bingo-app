@@ -8,8 +8,11 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.telegram.telegrambots.bots.TelegramLongPollingBot;
 import org.telegram.telegrambots.meta.api.methods.GetMe;
+import org.telegram.telegrambots.meta.api.methods.menubutton.SetChatMenuButton;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
 import org.telegram.telegrambots.meta.api.objects.Update;
+import org.telegram.telegrambots.meta.api.objects.menubutton.MenuButtonWebApp;
+import org.telegram.telegrambots.meta.api.objects.webapp.WebAppInfo;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 
 @Component
@@ -25,6 +28,9 @@ public class BingoTelegramBot extends TelegramLongPollingBot {
 
     @Value("${app.telegram.bot.token}")
     private String token;
+
+    @Value("${bingo.webapp.url}")
+    private String webAppUrl;
 
     private Long botId;
 
@@ -45,6 +51,22 @@ public class BingoTelegramBot extends TelegramLongPollingBot {
         } catch (TelegramApiException e) {
             log.error("Failed to connect bot: {}", e.getMessage());
             log.error("Please verify your BOT_TOKEN is correct");
+        }
+
+        setMenuButton();
+    }
+
+    private void setMenuButton() {
+        try {
+            execute(SetChatMenuButton.builder()
+                    .menuButton(MenuButtonWebApp.builder()
+                            .text("Open App")
+                            .webAppInfo(new WebAppInfo(webAppUrl))
+                            .build())
+                    .build());
+            log.info("Bot menu button set to WebApp: {}", webAppUrl);
+        } catch (TelegramApiException e) {
+            log.error("Failed to set menu button: {}", e.getMessage());
         }
     }
 

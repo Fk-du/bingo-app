@@ -38,7 +38,7 @@ public class PlayerBotHandler {
             case CHECK_BALANCE -> handleCheckBalance(ctx);
             case ACTIVE_GAME -> handleActiveGame(ctx);
             default -> sendMessage(ctx.getBot(), ctx.getChatId(),
-                    "Use the Launch App button to access your game and balance.");
+                    "Tap the \uD83D\uDD34 Open App button next to the chat input to access your game and balance.");
         }
     }
 
@@ -52,7 +52,7 @@ public class PlayerBotHandler {
 
             BigDecimal balance = playerService.getBalance(user.getId());
             sendMessage(ctx.getBot(), ctx.getChatId(),
-                    "💰 Your Balance: *" + balance + " coins*\n\nUse the Launch App to play or withdraw.");
+                    "💰 Your Balance: *" + balance + " coins*\n\nTap the \uD83D\uDD34 Open App button next to the chat input to play or withdraw.");
         } catch (Exception e) {
             log.error("Failed to check balance", e);
             sendMessage(ctx.getBot(), ctx.getChatId(), "Error checking balance: " + e.getMessage());
@@ -70,7 +70,7 @@ public class PlayerBotHandler {
             var activeCards = gameCardRepository.findByPlayerIdAndActiveGames(user.getId());
             if (activeCards.isEmpty()) {
                 sendMessage(ctx.getBot(), ctx.getChatId(),
-                        "You are not registered for any active game.\n\nUse the Launch App to join a game.");
+                        "You are not registered for any active game.\n\nTap the \uD83D\uDD34 Open App button next to the chat input to join a game.");
                 return;
             }
 
@@ -88,7 +88,7 @@ public class PlayerBotHandler {
                     "Entry Fee: " + game.getEntryFee() + " coins\n" +
                     "Prize Pool: " + game.getPrizePool() + " coins\n" +
                     "Numbers Called: " + game.getTotalNumbersCalled() + "/75\n\n" +
-                    "Use the Launch App to view your card and claim Bingo.";
+                    "Tap the \uD83D\uDD34 Open App button next to the chat input to view your card and claim Bingo.";
 
             sendMessage(ctx.getBot(), ctx.getChatId(), msg);
         } catch (Exception e) {

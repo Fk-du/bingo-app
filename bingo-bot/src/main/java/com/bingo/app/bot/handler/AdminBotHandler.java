@@ -32,7 +32,7 @@ public class AdminBotHandler {
 
         switch (data) {
             case BotConstants.INVITE_LINK -> handleInviteLink(ctx);
-            default -> sendMessage(ctx.getBot(), ctx.getChatId(), "Unknown action. Use the Launch App button to manage your games.");
+            default -> sendMessage(ctx.getBot(), ctx.getChatId(), "Unknown action. Tap the \uD83D\uDD34 Open App button next to the chat input to manage your games.");
         }
     }
 

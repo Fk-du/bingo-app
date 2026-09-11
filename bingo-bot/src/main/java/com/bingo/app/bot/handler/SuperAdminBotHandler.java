@@ -22,7 +22,7 @@ public class SuperAdminBotHandler {
 
         switch (data) {
             case BotConstants.CREATE_ADMIN -> handleCreateAdmin(ctx);
-            default -> sendMessage(ctx.getBot(), ctx.getChatId(), "Unknown action. Use the Launch App button to manage the platform.");
+            default -> sendMessage(ctx.getBot(), ctx.getChatId(), "Unknown action. Tap the \uD83D\uDD34 Open App button next to the chat input to manage the platform.");
         }
     }
 
