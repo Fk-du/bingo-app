@@ -53,7 +53,7 @@ public class StartCommand {
             }
 
             TenantHelper.runWithTenant(existingUser, () -> {
-                sendMessage(bot, chatId, "👋 Welcome back! Use the menu below to continue.");
+                sendMessage(bot, chatId, "👋 Welcome back! Use the menu below to continue.\n\nUse /app to open BingoPlus in the browser.");
                 menuService.showMenu(bot, update, existingUser);
             });
             return;
@@ -63,7 +63,7 @@ public class StartCommand {
         if (telegramId.equals(superAdminTelegramId)) {
             User superAdmin = userService.ensureSuperAdmin(telegramId);
             TenantHelper.runWithTenant(superAdmin, () -> {
-                sendMessage(bot, chatId, "✅ Welcome Super Admin! You have full platform access. Use the menu below to open the admin panel.");
+                sendMessage(bot, chatId, "✅ Welcome Super Admin! You have full platform access. Use the menu below to open the admin panel.\n\nUse /app to open BingoPlus in the browser.");
                 menuService.showMenu(bot, update, superAdmin);
             });
             return;
@@ -79,7 +79,7 @@ public class StartCommand {
             User newUser = inviteService.registerWithInvite(telegramId, code);
             TenantHelper.runWithTenant(newUser, () -> {
                 String roleText = newUser.getRole() == Role.ADMIN ? "Admin" : "Player";
-                sendMessage(bot, chatId, "🎉 Welcome to BingoPlus! You have been registered as a " + roleText + ". Use the menu below to get started.");
+                sendMessage(bot, chatId, "🎉 Welcome to BingoPlus! You have been registered as a " + roleText + ". Use the menu below to get started.\n\nUse /app to open BingoPlus in the browser.");
                 menuService.showMenu(bot, update, newUser);
             });
         } catch (Exception e) {

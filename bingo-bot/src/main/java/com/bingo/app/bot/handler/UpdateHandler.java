@@ -82,6 +82,11 @@ public class UpdateHandler {
             return;
         }
 
+        if (text.equalsIgnoreCase("/app") || text.equalsIgnoreCase("/open") || text.equalsIgnoreCase("/launch")) {
+            sendMessage(bot, chatId, "Open BingoPlus here: [BingoPlus](https://nowbingoplus.lol)");
+            return;
+        }
+
         User user = userService.findByTelegramId(telegramId);
         if (user == null) {
             // Unknown user: guide them to register via /start with an invite.
