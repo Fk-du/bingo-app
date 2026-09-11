@@ -42,6 +42,7 @@ public class MenuService {
                 message.setText("\uD83C\uDFAE Welcome to BingoPlus!\n\nUse the buttons below to check your balance or active game. Tap the \uD83D\uDD34 *Open App* button next to the chat input to open the game.");
                 keyboard.add(createRow(createButton(BotConstants.BTN_CHECK_BALANCE)));
                 keyboard.add(createRow(createButton(BotConstants.BTN_ACTIVE_GAME)));
+                keyboard.add(createRow(createButton(BotConstants.BTN_INVITE_FRIEND)));
             }
             case ADMIN -> {
                 if (!user.isAdminApproved()) {

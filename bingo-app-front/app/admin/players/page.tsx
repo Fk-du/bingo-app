@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react';
 import { ProtectedRoute } from '@/components/common/ProtectedRoute';
 import { Role } from '@/types/enums';
 import { usePlayers, useFundPlayer, useAdminWallet } from '@/hooks/usePlayers';
+import { useInviteLink, useInviteStats } from '@/hooks/useInvite';
 import { FundPlayerDialog } from '@/components/players/FundPlayerDialog';
 import {
   ActionButton,
@@ -23,6 +24,8 @@ function playerDisplayName(p: { firstName?: string; lastName?: string; username?
 export default function AdminPlayersPage() {
   const { data: players, isLoading } = usePlayers();
   const { data: adminWallet } = useAdminWallet();
+  const { data: inviteLink } = useInviteLink();
+  const { data: inviteStats } = useInviteStats();
   const { mutate: fundPlayer, isPending } = useFundPlayer();
   const [fundTarget, setFundTarget] = useState<{
     id: number;
@@ -30,6 +33,30 @@ export default function AdminPlayersPage() {
     balance: number;
   } | null>(null);
   const [search, setSearch] = useState('');
+  const [copied, setCopied] = useState(false);
+  const [showInvite, setShowInvite] = useState(false);
+
+  const handleCopy = async () => {
+    if (!inviteLink) return;
+    try {
+      await navigator.clipboard.writeText(inviteLink);
+    } catch {
+      const input = document.createElement('input');
+      input.value = inviteLink;
+      document.body.appendChild(input);
+      input.select();
+      document.execCommand('copy');
+      document.body.removeChild(input);
+    }
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleShare = () => {
+    if (!inviteLink) return;
+    const text = encodeURIComponent(`Join BingoPlus and play with me! 🎱\n\n${inviteLink}`);
+    window.open(`https://t.me/share/url?url=${encodeURIComponent(inviteLink)}&text=${text}`, '_blank');
+  };
 
   const filteredPlayers = useMemo(() => {
     if (!players) return [];
@@ -50,7 +77,49 @@ export default function AdminPlayersPage() {
         eyebrow="Players"
         title="Player registry"
         description="Manage players and their balances."
+        action={
+          <ActionButton onClick={() => setShowInvite((v) => !v)} variant="primary">
+            {showInvite ? 'Hide invite' : 'Invite Player'}
+          </ActionButton>
+        }
       />
+
+      {showInvite && (
+        <Surface className="mb-4 p-4">
+          <p className="text-sm font-semibold text-bp-gold">Invite a Player</p>
+          <p className="mt-1 text-xs text-bp-muted">
+            Share your link — players who register through it will join your room.
+          </p>
+
+          {inviteStats && (
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <div className="rounded-xl border border-bp-border bg-bp-bg px-3 py-2 text-center">
+                <p className="text-lg font-bold text-bp-text">{inviteStats.totalRegistrations}</p>
+                <p className="text-[10px] text-bp-muted">Players joined</p>
+              </div>
+              <div className="rounded-xl border border-bp-border bg-bp-bg px-3 py-2 text-center">
+                <p className="text-lg font-bold text-bp-text">{inviteStats.activeCodes}</p>
+                <p className="text-[10px] text-bp-muted">Active links</p>
+              </div>
+            </div>
+          )}
+
+          {inviteLink && (
+            <div className="mt-3 rounded-xl border border-bp-border bg-bp-bg p-3">
+              <p className="break-all text-xs text-bp-muted">{inviteLink}</p>
+            </div>
+          )}
+
+          <div className="mt-3 grid grid-cols-2 gap-2">
+            <ActionButton variant="primary" onClick={handleCopy} className="w-full">
+              {copied ? '✓ Copied!' : 'Copy Link'}
+            </ActionButton>
+            <ActionButton variant="success" onClick={handleShare} className="w-full">
+              Share
+            </ActionButton>
+          </div>
+        </Surface>
+      )}
 
       <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
         <MetricCard

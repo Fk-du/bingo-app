@@ -5,6 +5,7 @@ import com.bingo.app.bot.BingoTelegramBot;
 import com.bingo.app.master.entity.User;
 import com.bingo.app.master.enums.Role;
 import com.bingo.app.master.repository.UserRepository;
+import com.bingo.app.master.service.InviteService;
 import com.bingo.app.tenant.entity.Game;
 import com.bingo.app.tenant.enums.GameStatus;
 import com.bingo.app.tenant.repository.GameCardRepository;
@@ -26,9 +27,11 @@ public class PlayerBotHandler {
     private final PlayerService playerService;
     private final GameRepository gameRepository;
     private final GameCardRepository gameCardRepository;
+    private final InviteService inviteService;
 
     private static final String CHECK_BALANCE = "CHECK_BALANCE";
     private static final String ACTIVE_GAME = "ACTIVE_GAME";
+    private static final String INVITE_FRIEND = "INVITE_FRIEND";
 
     public void handle(CallbackContext ctx) {
         String data = ctx.getData();
@@ -37,8 +40,30 @@ public class PlayerBotHandler {
         switch (data) {
             case CHECK_BALANCE -> handleCheckBalance(ctx);
             case ACTIVE_GAME -> handleActiveGame(ctx);
+            case INVITE_FRIEND -> handleInviteFriend(ctx);
             default -> sendMessage(ctx.getBot(), ctx.getChatId(),
                     "Tap the \uD83D\uDD34 Open App button next to the chat input to access your game and balance.");
+        }
+    }
+
+    private void handleInviteFriend(CallbackContext ctx) {
+        try {
+            String botUsername = ctx.getBot().getBotUsername();
+            if (botUsername == null || botUsername.isBlank()) {
+                sendMessage(ctx.getBot(), ctx.getChatId(), "Bot username not configured. Please check server configuration.");
+                return;
+            }
+            String inviteLink = inviteService.generateInviteLinkForUser(ctx.getUser().getId(), botUsername);
+
+            String msg = "\uD83D\uDD17 *Invite Friend*\n\n" +
+                    "Share this link with friends to invite them to BingoPlus:\n" +
+                    "`" + inviteLink + "`\n\n" +
+                    "Friends who join via your link will be added to your games.";
+
+            sendMessage(ctx.getBot(), ctx.getChatId(), msg);
+        } catch (Exception e) {
+            log.error("Failed to generate invite friend link", e);
+            sendMessage(ctx.getBot(), ctx.getChatId(), "Error: " + e.getMessage());
         }
     }
 
