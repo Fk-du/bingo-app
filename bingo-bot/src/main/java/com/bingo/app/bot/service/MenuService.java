@@ -9,7 +9,6 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
 import org.telegram.telegrambots.meta.api.objects.Update;
-import org.telegram.telegrambots.meta.api.objects.webapp.WebAppInfo;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.ReplyKeyboardMarkup;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.KeyboardButton;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.KeyboardRow;
@@ -44,10 +43,9 @@ public class MenuService {
 
         switch (user.getRole()) {
             case PLAYER -> {
-                message.setText("\uD83C\uDFAE Welcome to BingoPlus!\n\nUse the menu below to check your balance or active game, or launch the app. No need to type anything.");
+                message.setText("\uD83C\uDFAE Welcome to BingoPlus!\n\nUse the commands below to check your balance or active game. No need to type anything.");
                 keyboard.add(createRow(createButton(BotConstants.BTN_CHECK_BALANCE)));
                 keyboard.add(createRow(createButton(BotConstants.BTN_ACTIVE_GAME)));
-                keyboard.add(createRow(createWebAppButton(BotConstants.BTN_LAUNCH_APP)));
             }
             case ADMIN -> {
                 if (!user.isAdminApproved()) {
@@ -57,14 +55,12 @@ public class MenuService {
                             "your account. Please check back later.");
                     break;
                 }
-                message.setText("🎯 Admin Dashboard\n\nManage your games in the app or generate an invite link for players.");
+                message.setText("🎯 Admin Dashboard\n\nUse the commands below to manage your games or generate an invite link for players.");
                 keyboard.add(createRow(createButton(BotConstants.BTN_INVITE_LINK)));
-                keyboard.add(createRow(createWebAppButton("🚀 Launch App")));
             }
             case SUPER_ADMIN -> {
-                message.setText("\uD83D\uDC51 Super Admin Panel\n\nManage your platform in the app or generate an admin invite link.");
+                message.setText("\uD83D\uDC51 Super Admin Panel\n\nUse the commands below to manage your platform or generate an admin invite link.");
                 keyboard.add(createRow(createButton(BotConstants.BTN_CREATE_ADMIN)));
-                keyboard.add(createRow(createWebAppButton(BotConstants.BTN_LAUNCH_APP)));
             }
         }
 
@@ -96,10 +92,4 @@ public class MenuService {
                 .build();
     }
 
-    private KeyboardButton createWebAppButton(String text) {
-        return KeyboardButton.builder()
-                .text(text)
-                .webApp(new WebAppInfo(webAppUrl))
-                .build();
-    }
 }

@@ -15,9 +15,6 @@ import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
-import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup;
-import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKeyboardButton;
-import org.telegram.telegrambots.meta.api.objects.webapp.WebAppInfo;
 
 import java.util.List;
 import java.util.Map;
@@ -137,14 +134,6 @@ public class NotificationService {
                         .chatId(user.getTelegramId())
                         .text(text)
                         .build();
-
-                InlineKeyboardButton launch = new InlineKeyboardButton();
-                launch.setText("\uD83D\uDE80 Launch App");
-                launch.setWebApp(new WebAppInfo(webAppUrl));
-
-                InlineKeyboardMarkup markup = new InlineKeyboardMarkup();
-                markup.setKeyboard(List.of(List.of(launch)));
-                message.setReplyMarkup(markup);
 
                 bot.execute(message);
             } catch (Exception e) {

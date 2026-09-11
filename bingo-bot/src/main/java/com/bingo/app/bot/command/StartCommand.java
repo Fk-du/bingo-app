@@ -43,7 +43,7 @@ public class StartCommand {
                 try {
                     User upgraded = inviteService.registerWithInvite(telegramId, code);
                     TenantHelper.runWithTenant(upgraded, () -> {
-                        sendMessage(bot, chatId, "🎉 Welcome to BingoPlus! You have been registered as an Admin. Use the button below to launch the app.");
+                        sendMessage(bot, chatId, "🎉 Welcome to BingoPlus! You have been registered as an Admin. Use the menu below to get started.");
                         menuService.showMenu(bot, update, upgraded);
                     });
                     return;
@@ -53,7 +53,7 @@ public class StartCommand {
             }
 
             TenantHelper.runWithTenant(existingUser, () -> {
-                sendMessage(bot, chatId, "👋 Welcome back! Use the button below to launch the app.");
+                sendMessage(bot, chatId, "👋 Welcome back! Use the menu below to continue.");
                 menuService.showMenu(bot, update, existingUser);
             });
             return;
@@ -63,7 +63,7 @@ public class StartCommand {
         if (telegramId.equals(superAdminTelegramId)) {
             User superAdmin = userService.ensureSuperAdmin(telegramId);
             TenantHelper.runWithTenant(superAdmin, () -> {
-                sendMessage(bot, chatId, "✅ Welcome Super Admin! You have full platform access. Use the button below to open the admin panel.");
+                sendMessage(bot, chatId, "✅ Welcome Super Admin! You have full platform access. Use the menu below to open the admin panel.");
                 menuService.showMenu(bot, update, superAdmin);
             });
             return;
@@ -79,7 +79,7 @@ public class StartCommand {
             User newUser = inviteService.registerWithInvite(telegramId, code);
             TenantHelper.runWithTenant(newUser, () -> {
                 String roleText = newUser.getRole() == Role.ADMIN ? "Admin" : "Player";
-                sendMessage(bot, chatId, "🎉 Welcome to BingoPlus! You have been registered as a " + roleText + ". Use the button below to launch the app.");
+                sendMessage(bot, chatId, "🎉 Welcome to BingoPlus! You have been registered as a " + roleText + ". Use the menu below to get started.");
                 menuService.showMenu(bot, update, newUser);
             });
         } catch (Exception e) {
