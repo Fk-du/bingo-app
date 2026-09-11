@@ -1,5 +1,8 @@
 package com.bingo.app.tenant.service;
 
+import com.bingo.app.infrastructure.persistence.TenantContext;
+import com.bingo.app.master.entity.TenantRegistry;
+import com.bingo.app.master.repository.TenantRegistryRepository;
 import com.bingo.app.tenant.dto.mapper.TenantMapper;
 import com.bingo.app.tenant.dto.response.CardResponse;
 import com.bingo.app.tenant.dto.response.GameCardResponse;
@@ -41,6 +44,7 @@ public class CardService {
     private final WalletService walletService;
     private final ObjectMapper objectMapper;
     private final TenantMapper tenantMapper;
+    private final TenantRegistryRepository tenantRegistryRepository;
 
     private static final int[][] COLUMN_RANGES = {
             {1, 15},   // B
@@ -293,13 +297,27 @@ public class CardService {
      */
     @Scheduled(cron = "0 0 3 * * ?")
     public void replenishCardPool() {
-        long available = countAvailableCards();
-        if (available < 20) {
-            log.info("Card pool low ({} available). Generating 50 new cards.", available);
+        List<TenantRegistry> tenants;
+        try {
+            tenants = tenantRegistryRepository.findAll();
+        } catch (Exception e) {
+            log.warn("Could not load tenant registry for card pool replenishment: {}", e.getMessage());
+            return;
+        }
+
+        for (TenantRegistry tenant : tenants) {
+            String tenantId = "agent_" + tenant.getAdminUserId();
             try {
-                generateCardPool(50);
+                TenantContext.setTenant(tenantId);
+                long available = countAvailableCards();
+                if (available < 20) {
+                    log.info("Card pool low in tenant {} ({} available). Generating 50 new cards.", tenantId, available);
+                    generateCardPool(50);
+                }
             } catch (Exception e) {
-                log.error("Failed to replenish card pool: {}", e.getMessage());
+                log.error("Failed to replenish card pool for tenant {}: {}", tenantId, e.getMessage());
+            } finally {
+                TenantContext.clear();
             }
         }
     }
