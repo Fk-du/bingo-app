@@ -17,8 +17,9 @@ import {
 import { IconCoin, IconWallet } from '@/components/ui/Icons';
 
 function playerDisplayName(p: { firstName?: string; lastName?: string; username?: string; userId: number }): string {
+  if (p.username) return `@${p.username.replace(/^@/, '')}`;
   const full = [p.firstName, p.lastName].filter(Boolean).join(' ').trim();
-  return full || p.username || `Player #${p.userId}`;
+  return full || `Player #${p.userId}`;
 }
 
 export default function AdminPlayersPage() {
@@ -157,7 +158,7 @@ export default function AdminPlayersPage() {
             type="search"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search by name or player ID..."
+            placeholder="Search by username, phone or ID..."
             aria-label="Search players"
             className="w-full"
           />
@@ -183,6 +184,12 @@ export default function AdminPlayersPage() {
                       {playerDisplayName(player)}
                     </p>
                     <div className="mt-0.5 flex items-center gap-3 text-xs text-bp-muted">
+                      {player.phoneNumber && (
+                        <span className="inline-flex items-center gap-1">
+                          <span>📞</span>
+                          <span>{player.phoneNumber}</span>
+                        </span>
+                      )}
                       <span className="inline-flex items-center gap-1">
                         <IconCoin className="h-3.5 w-3.5" />
                         <span className="font-medium text-bp-gold">

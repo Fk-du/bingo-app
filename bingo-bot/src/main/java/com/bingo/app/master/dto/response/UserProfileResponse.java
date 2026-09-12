@@ -12,7 +12,9 @@ public record UserProfileResponse(
         String username,
         String firstName,
         String lastName,
+        String phoneNumber,
         String role,
+        boolean verified,
         Long adminUserId,
         String businessName,
         String depositAccountInfo,
@@ -22,14 +24,20 @@ public record UserProfileResponse(
         BigDecimal frozenBalance,
         boolean active
 ) {
+    public static boolean isVerified(User user) {
+        return user.getPhoneNumber() != null && !user.getPhoneNumber().isBlank();
+    }
+
     public static UserProfileResponse from(User user) {
         return UserProfileResponse.builder()
                 .id(user.getId())
                 .telegramId(user.getTelegramId())
-                .username(user.getUsername())
+                .username(user.getTelegramUsername())
                 .firstName(user.getFirstName())
                 .lastName(user.getLastName())
+                .phoneNumber(user.getPhoneNumber())
                 .role(user.getRole().name())
+                .verified(isVerified(user))
                 .adminUserId(user.getAdminUserId())
                 .businessName(user.getBusinessName())
                 .depositAccountInfo(user.getDepositAccountInfo())

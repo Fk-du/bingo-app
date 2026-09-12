@@ -7,6 +7,8 @@ import { IconDashboard, IconGames, IconMore, IconPlayers, IconRequests } from '@
 const navItems: NavItem[] = [
   { href: '/super-admin', label: 'Dashboard', icon: IconDashboard, exact: true },
   { href: '/super-admin/agents', label: 'Agents', icon: IconPlayers },
+  { href: '/super-admin/owner-fees', label: 'Owner Fees', icon: IconRequests },
+  { href: '/super-admin/cards', label: 'Cards', icon: IconRequests },
   { href: '/super-admin/reports', label: 'Reports', icon: IconRequests },
   { href: '/super-admin/broadcast', label: 'Broadcast', icon: IconMore },
   { href: '/super-admin/config', label: 'Config', icon: IconGames },

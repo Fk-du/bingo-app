@@ -10,8 +10,10 @@ const navItems: NavItem[] = [
   { href: '/admin', label: 'Dashboard', icon: IconDashboard, exact: true },
   { href: '/admin/games', label: 'Games', icon: IconGames },
   { href: '/admin/players', label: 'Players', icon: IconPlayers },
+  { href: '/admin/owner-fees', label: 'Owner Fees', icon: IconRequests },
   { href: '/admin/coins', label: 'Coin Requests', icon: IconRequests },
   { href: '/admin/withdrawals', label: 'Withdrawals', icon: IconWallet },
+  { href: '/admin/cards', label: 'Cards', icon: IconRequests },
   { href: '/admin/broadcast', label: 'Broadcast', icon: IconLobby },
   { href: '/admin/profile', label: 'More', icon: IconMore },
 ];

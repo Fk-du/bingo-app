@@ -2,6 +2,7 @@ package com.bingo.app.infrastructure.persistence;
 
 import com.bingo.app.master.entity.TenantRegistry;
 import com.bingo.app.master.repository.TenantRegistryRepository;
+import com.bingo.app.tenant.service.CardService;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -35,13 +36,16 @@ public class TenantManagementService {
             "db/migration/V10__add_game_card_marked_numbers.sql",
             "db/migration/V11__add_race_condition_constraints.sql",
             "db/migration/V12__add_game_custom_pattern.sql",
-            "db/migration/V13__add_game_card_auto_mark.sql"
+            "db/migration/V13__add_game_card_auto_mark.sql",
+            "db/migration/V14__add_game_cards_game_card_unique.sql",
+            "db/migration/V15__fix_multi_card_constraints.sql"
     );
 
     private final TenantRegistryRepository tenantRegistryRepository;
     private final DataSource masterDataSource;
     private final TenantRoutingDataSource routingDataSource;
     private final JdbcTemplate jdbcTemplate;
+    private final CardService cardService;
 
     @Value("${tenant.datasource.url}")
     private String tenantBaseUrl;
@@ -75,6 +79,7 @@ public class TenantManagementService {
         TenantRegistry saved = tenantRegistryRepository.save(registry);
 
         routingDataSource.addTenant("agent_" + adminUserId, databaseName);
+        seedInitialCardPool(adminUserId);
 
         log.info("Tenant ensured: {} for admin user {}", databaseName, adminUserId);
         return saved;
@@ -96,9 +101,26 @@ public class TenantManagementService {
                 routingDataSource.addTenant(
                         "agent_" + registry.getAdminUserId(),
                         registry.getDatabaseName());
+                seedInitialCardPool(registry.getAdminUserId());
             } catch (Exception e) {
                 log.error("Failed to migrate tenant database {}: {}", registry.getDatabaseName(), e.getMessage(), e);
             }
+        }
+    }
+
+    /**
+     * Give a tenant its first pool of cards exactly once. Any further card growth
+     * is super-admin controlled via card requests.
+     */
+    private void seedInitialCardPool(Long adminUserId) {
+        try {
+            TenantContext.setTenant(TenantContext.tenantKeyForAdmin(adminUserId));
+            cardService.ensureInitialCardPool();
+        } catch (Exception e) {
+            log.warn("Could not seed initial card pool for tenant agent_{}: {}",
+                    adminUserId, e.getMessage());
+        } finally {
+            TenantContext.clear();
         }
     }
 
@@ -169,6 +191,7 @@ public class TenantManagementService {
 
             try {
                 stmt.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS deposit_account_info TEXT");
+            stmt.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS phone_number VARCHAR(30)");
             } catch (Exception e) {
                 if (e.getMessage() != null && e.getMessage().contains("already exists")) {
                     // column already present
@@ -193,6 +216,7 @@ public class TenantManagementService {
                     username VARCHAR(100),
                     first_name VARCHAR(100),
                     last_name VARCHAR(100),
+                    phone_number VARCHAR(30),
                     role VARCHAR(20) NOT NULL,
                     admin_user_id BIGINT,
                     parent_id BIGINT,
@@ -229,6 +253,22 @@ public class TenantManagementService {
                     created_at TIMESTAMP NOT NULL DEFAULT NOW()
                 )
             """);
+
+            stmt.execute("""
+                CREATE TABLE IF NOT EXISTS owner_fee_settlements (
+                    id BIGSERIAL PRIMARY KEY,
+                    admin_user_id BIGINT NOT NULL,
+                    amount DECIMAL(19,2) NOT NULL,
+                    screenshot_url VARCHAR(500),
+                    status VARCHAR(20) NOT NULL DEFAULT 'PENDING',
+                    approved_by BIGINT,
+                    approved_at TIMESTAMP,
+                    rejection_reason TEXT,
+                    created_at TIMESTAMP NOT NULL DEFAULT NOW()
+                )
+            """);
+            stmt.execute("CREATE INDEX IF NOT EXISTS idx_owner_fee_settle_admin ON owner_fee_settlements (admin_user_id)");
+            stmt.execute("CREATE INDEX IF NOT EXISTS idx_owner_fee_settle_status ON owner_fee_settlements (status)");
 
             stmt.execute("""
                 CREATE TABLE IF NOT EXISTS notifications (

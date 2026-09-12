@@ -10,6 +10,7 @@ public record PendingClaimCardResponse(
         Long claimId,
         Long playerId,
         String playerName,
+        Long cardId,
         int[][] cardNumbers,
         List<Integer> calledNumbers,
         LocalDateTime claimedAt

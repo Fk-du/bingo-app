@@ -1,6 +1,7 @@
 package com.bingo.app.tenant.service;
 
 import com.bingo.app.master.repository.UserRepository;
+import com.bingo.app.master.service.ConfigService;
 import com.bingo.app.tenant.dto.mapper.TenantMapper;
 import com.bingo.app.tenant.entity.BingoClaim;
 import com.bingo.app.tenant.entity.Game;
@@ -56,15 +57,18 @@ class GameEnginePayoutsTest {
     @Mock TenantRegistryHolder tenantRegistryHolder;
     @Mock TransactionTemplate transactionTemplate;
     @Mock UserRepository userRepository;
+    @Mock ConfigService configService;
 
     GameEngineService engine;
     ObjectMapper objectMapper = new ObjectMapper();
 
     @BeforeEach
     void setUp() {
+        when(configService.getOwnerShareRate()).thenReturn(BigDecimal.ZERO);
         engine = new GameEngineService(gameRepository, calledNumberRepository, gameCardRepository,
                 bingoClaimRepository, walletService, cardService, objectMapper,
-                transactionTemplate, messagingTemplate, tenantMapper, null, userRepository, null);
+                transactionTemplate, messagingTemplate, tenantMapper, null, userRepository,
+                null, configService);
         when(transactionTemplate.execute(any(TransactionCallback.class)))
                 .thenAnswer(inv -> ((TransactionCallback<?>) inv.getArgument(0)).doInTransaction(mockTransaction()));
     }
@@ -73,7 +77,7 @@ class GameEnginePayoutsTest {
         return org.mockito.Mockito.mock(TransactionStatus.class);
     }
 
-    /** Holder shim so the constructor keeps its 11-arg shape without the real registry bean. */
+    /** Holder shim so the constructor keeps its shape without the real registry bean. */
     interface TenantRegistryHolder {}
 
     private Game game(long id, BigDecimal pot, String commission) {
@@ -91,6 +95,7 @@ class GameEnginePayoutsTest {
         c.setId(id);
         c.setGameId(30L);
         c.setPlayerId(playerId);
+        c.setCardId(id + 1000L);
         c.setResult("VALID");
         return c;
     }
@@ -102,9 +107,9 @@ class GameEnginePayoutsTest {
         for (BingoClaim c : claims) {
             when(bingoClaimRepository.claimForProcessing(eq(c.getId()), any(), any())).thenReturn(1);
             when(bingoClaimRepository.save(c)).thenReturn(c);
+            when(gameCardRepository.findByGameIdAndCardId(g.getId(), c.getCardId()))
+                    .thenReturn(Optional.of(new GameCard()));
         }
-        when(gameCardRepository.findByGameIdAndPlayerId(eq(g.getId()), anyLong()))
-                .thenReturn(Optional.of(new GameCard()));
         when(gameRepository.save(any(Game.class))).thenAnswer(inv -> inv.getArgument(0));
     }
 
@@ -140,6 +145,30 @@ class GameEnginePayoutsTest {
     }
 
     @Test
+    @DisplayName("owner share accrues as cash debt: admin keeps full 2.00 commission, owner owes 0.40, winners 9 each")
+    void ownerShareAccruesAsOwnerFee() throws Exception {
+        when(configService.getOwnerShareRate()).thenReturn(new BigDecimal("20"));
+        Game g = game(33L, new BigDecimal("20.00"), "10.00");
+        BingoClaim w1 = claim(1L, 101L);
+        BingoClaim w2 = claim(2L, 102L);
+        stubPending(g, w1, w2);
+
+        var result = engine.approveAllClaims(g.getId(), 2L);
+
+        assertAll(
+                () -> assertEquals(2, result.getApprovedCount()),
+                () -> assertEquals(0, new BigDecimal("9.00").compareTo(result.getRewardAmount())),
+                () -> assertTrue(result.isGameEnded())
+        );
+        // admin keeps the FULL commission; the owner share is only accrued as a cash debt
+        verify(walletService).creditAgentCommission(eq(2L), eq(new BigDecimal("2.00")), eq(33L));
+        verify(walletService).accrueOwnerFee(eq(new BigDecimal("0.40")), eq(33L));
+        // winners unaffected by the owner share
+        verify(walletService).creditWinnings(101L, new BigDecimal("9.00"), 33L);
+        verify(walletService).creditWinnings(102L, new BigDecimal("9.00"), 33L);
+    }
+
+    @Test
     @DisplayName("four simultaneous winners: approve-all refused, nothing paid")
     void approveAllRefusedBeyondCap() {
         Game g = game(31L, new BigDecimal("40.00"), "10.00");
@@ -162,15 +191,18 @@ class GameEnginePayoutsTest {
         when(gameRepository.findByIdForUpdate(g.getId())).thenReturn(Optional.of(g));
         when(calledNumberRepository.findCalledNumbersByGameId(g.getId()))
                 .thenReturn(List.of(1, 2, 3, 4, 5));
-        when(gameCardRepository.findByGameIdAndPlayerId(g.getId(), 101L))
+        when(gameCardRepository.findByGameIdAndCardId(g.getId(), 5000L))
                 .thenReturn(Optional.of(GameCard.builder()
+                        .gameId(g.getId())
+                        .playerId(101L)
                         .card(com.bingo.app.tenant.entity.Card.builder()
+                                .id(5000L)
                                 .numbers("[[1,2,3,4,5],[6,7,8,9,10],[11,12,0,14,15],[16,17,18,19,20],[21,22,23,24,25]]")
                                 .build())
                         .build()));
         when(bingoClaimRepository.save(any(BingoClaim.class))).thenAnswer(inv -> inv.getArgument(0));
 
-        var result = engine.claimBingo(g.getId(), 101L, Collections.<Integer>emptyList(), false);
+        var result = engine.claimBingo(g.getId(), 101L, 5000L, Collections.<Integer>emptyList(), false);
 
         assertTrue(result.isValid() || result.isPendingReview(),
                 "a completed SINGLE_LINE must be accepted");
@@ -180,12 +212,12 @@ class GameEnginePayoutsTest {
     }
 
     @Test
-    @DisplayName("rejected claim bans the player for the game and resumes the game")
+    @DisplayName("rejected claim bans only the claimed card and resumes the game")
     void rejectClaimBansPlayer() {
         Game g = game(33L, new BigDecimal("20.00"), "10.00");
         BingoClaim claim = claim(7L, 101L);
         claim.setGameId(g.getId());
-        GameCard playerCard = new GameCard();
+        GameCard claimedCard = new GameCard();
 
         when(gameRepository.findByIdForUpdate(g.getId())).thenReturn(Optional.of(g));
         when(gameRepository.findById(g.getId())).thenReturn(Optional.of(g));
@@ -193,7 +225,7 @@ class GameEnginePayoutsTest {
         when(bingoClaimRepository.claimForProcessing(eq(7L), eq(2L), any(LocalDateTime.class))).thenReturn(1);
         when(bingoClaimRepository.countByGameIdAndResultAndValidatedAtIsNull(g.getId(), "VALID")).thenReturn(0L);
         when(bingoClaimRepository.save(any(BingoClaim.class))).thenAnswer(inv -> inv.getArgument(0));
-        when(gameCardRepository.findByGameIdAndPlayerId(g.getId(), 101L)).thenReturn(Optional.of(playerCard));
+        when(gameCardRepository.findById(claim.getCardId())).thenReturn(Optional.of(claimedCard));
         when(gameCardRepository.save(any(GameCard.class))).thenAnswer(inv -> inv.getArgument(0));
         when(gameRepository.save(any(Game.class))).thenAnswer(inv -> inv.getArgument(0));
 
@@ -202,10 +234,10 @@ class GameEnginePayoutsTest {
         assertAll(
                 () -> assertEquals("REJECTED", claim.getResult()),
                 () -> assertEquals("invalid pattern", claim.getRejectionReason()),
-                () -> assertTrue(playerCard.isBanned(), "rejected player must be banned for the game"),
+                () -> assertTrue(claimedCard.isBanned(), "only the claimed card must be banned"),
                 () -> assertEquals(com.bingo.app.tenant.enums.GameStatus.IN_PROGRESS, g.getStatus())
         );
-        verify(gameCardRepository).save(playerCard);
+        verify(gameCardRepository).save(claimedCard);
         verify(bingoClaimRepository).save(claim);
     }
 
@@ -221,7 +253,7 @@ class GameEnginePayoutsTest {
         when(bingoClaimRepository.findByGameIdAndResultAndValidatedAtIsNull(g.getId(), "VALID"))
                 .thenReturn(List.of(w));
         when(bingoClaimRepository.save(any(BingoClaim.class))).thenAnswer(inv -> inv.getArgument(0));
-        when(gameCardRepository.findByGameIdAndPlayerId(g.getId(), 101L))
+        when(gameCardRepository.findByGameIdAndCardId(g.getId(), w.getCardId()))
                 .thenReturn(Optional.of(new GameCard()));
         when(gameCardRepository.findByGameIdAndWinnerTrue(g.getId())).thenReturn(List.of());
         when(gameRepository.save(any(Game.class))).thenAnswer(inv -> inv.getArgument(0));

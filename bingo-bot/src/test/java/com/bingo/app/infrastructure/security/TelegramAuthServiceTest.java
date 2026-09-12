@@ -11,6 +11,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -37,12 +38,12 @@ class TelegramAuthServiceTest {
                 .active(true)
                 .build();
 
-        when(userService.findOrCreateUser(eq(123L), eq("alice"), eq("Alice"), eq("Smith")))
+        when(userService.findOrCreateUser(eq(123L), eq("alice"), eq("Alice"), eq("Smith"), nullable(String.class)))
                 .thenReturn(expectedUser);
 
         String initData = buildInitData(
                 Map.of(
-                        "auth_date", "1710000000",
+                        "auth_date", String.valueOf(Instant.now().getEpochSecond()),
                         "query_id", "AAEAAAE",
                         "user", "{\"id\":123,\"first_name\":\"Alice\",\"last_name\":\"Smith\",\"username\":\"alice\"}"
                 ),
@@ -69,12 +70,14 @@ class TelegramAuthServiceTest {
 
     private static String buildInitData(Map<String, String> fields, String signature) {
         Map<String, String> orderedFields = new LinkedHashMap<>(fields);
-        String checkString = orderedFields.entrySet().stream()
+        Map<String, String> checkMap = new LinkedHashMap<>(orderedFields);
+        checkMap.put("signature", signature);
+        String checkString = checkMap.entrySet().stream()
                 .sorted(Map.Entry.comparingByKey())
                 .map(entry -> entry.getKey() + "=" + entry.getValue())
                 .collect(Collectors.joining("\n"));
 
-        String hash = hmacHex("test-bot-token", "WebAppData", checkString);
+        String hash = hmacHex("WebAppData", "test-bot-token", checkString);
 
         return orderedFields.entrySet().stream()
                 .map(entry -> entry.getKey() + "=" + entry.getValue())

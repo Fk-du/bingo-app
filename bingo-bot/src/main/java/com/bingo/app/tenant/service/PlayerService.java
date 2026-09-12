@@ -72,7 +72,8 @@ public class PlayerService {
                         .frozenBalance(dto.frozenBalance())
                         .firstName(user.getFirstName())
                         .lastName(user.getLastName())
-                        .username(user.getUsername())
+                        .username(user.getTelegramUsername())
+                        .phoneNumber(user.getPhoneNumber())
                         .createdAt(dto.createdAt())
                         .build())
                 .orElse(dto);

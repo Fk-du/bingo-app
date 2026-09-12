@@ -11,7 +11,9 @@ export interface UserProfileResponse {
   username: string | null;
   firstName: string | null;
   lastName: string | null;
+  phoneNumber: string | null;
   role: Role;
+  verified: boolean;
   adminUserId: number | null;
   businessName: string | null;
   depositAccountInfo: string | null;

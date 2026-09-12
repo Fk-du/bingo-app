@@ -13,7 +13,7 @@ import { PaymentProof } from '@/components/common/PaymentProof';
 import { ActionButton, StatusPill, Surface, TextField } from '@/components/ui/Surface';
 import { IconCoin } from '@/components/ui/Icons';
 
-const QUICK_AMOUNTS = [1000, 5000, 10000, 25000];
+const QUICK_AMOUNTS = [100, 250, 500, 1000];
 
 export default function WalletPage() {
   const user = useAuthStore((s) => s.user);

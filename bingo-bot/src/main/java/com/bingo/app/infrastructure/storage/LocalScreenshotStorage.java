@@ -81,7 +81,7 @@ public class LocalScreenshotStorage {
     }
 
     /** Folder names: letters, digits, dash and underscore only — anything else collapses to '-'. */
-    private static String sanitizeFolder(String agentFolder) {
+    public static String sanitizeFolder(String agentFolder) {
         if (agentFolder == null || agentFolder.isBlank()) {
             return "unsorted";
         }

@@ -4,6 +4,7 @@ import com.bingo.app.master.entity.User;
 import com.bingo.app.master.enums.Role;
 import com.bingo.app.master.service.InviteService;
 import com.bingo.app.master.service.UserService;
+import com.bingo.app.bot.BotConstants;
 import com.bingo.app.bot.BingoTelegramBot;
 import com.bingo.app.bot.service.MenuService;
 import com.bingo.app.infrastructure.persistence.TenantHelper;
@@ -43,8 +44,8 @@ public class StartCommand {
                 try {
                     User upgraded = inviteService.registerWithInvite(telegramId, code);
                     TenantHelper.runWithTenant(upgraded, () -> {
-                        sendMessage(bot, chatId, "🎉 Welcome to BingoPlus! You have been registered as an Admin. Use the menu below to get started.");
-                        menuService.showMenu(bot, update, upgraded);
+                        sendMessage(bot, chatId, "🎉 Welcome to BingoPlus! You have been registered as an Admin.");
+                        continueToMenu(bot, update, upgraded);
                     });
                     return;
                 } catch (Exception e) {
@@ -53,8 +54,8 @@ public class StartCommand {
             }
 
             TenantHelper.runWithTenant(existingUser, () -> {
-                sendMessage(bot, chatId, "👋 Welcome back! Use the menu below to continue.");
-                menuService.showMenu(bot, update, existingUser);
+                sendMessage(bot, chatId, "👋 Welcome back!");
+                continueToMenu(bot, update, existingUser);
             });
             return;
         }
@@ -63,8 +64,8 @@ public class StartCommand {
         if (telegramId.equals(superAdminTelegramId)) {
             User superAdmin = userService.ensureSuperAdmin(telegramId);
             TenantHelper.runWithTenant(superAdmin, () -> {
-                sendMessage(bot, chatId, "✅ Welcome Super Admin! You have full platform access. Use the menu below to open the admin panel.");
-                menuService.showMenu(bot, update, superAdmin);
+                sendMessage(bot, chatId, "✅ Welcome Super Admin! You have full platform access.");
+                continueToMenu(bot, update, superAdmin);
             });
             return;
         }
@@ -79,13 +80,68 @@ public class StartCommand {
             User newUser = inviteService.registerWithInvite(telegramId, code);
             TenantHelper.runWithTenant(newUser, () -> {
                 String roleText = newUser.getRole() == Role.ADMIN ? "Admin" : "Player";
-                sendMessage(bot, chatId, "🎉 Welcome to BingoPlus! You have been registered as a " + roleText + ". Use the menu below to get started.");
-                menuService.showMenu(bot, update, newUser);
+                sendMessage(bot, chatId, "🎉 Welcome to BingoPlus! You have been registered as a " + roleText + ".");
+                continueToMenu(bot, update, newUser);
             });
         } catch (Exception e) {
             log.error("Registration failed for telegramId={}", telegramId, e);
             sendMessage(bot, chatId, "❌ Registration failed: " + e.getMessage());
         }
+    }
+
+    /**
+     * Phone number and username are the verified identity of every user, so the
+     * menu is withheld until the phone number is shared. Existing users who
+     * already shared it skip straight through.
+     */
+    private void continueToMenu(BingoTelegramBot bot, Update update, User user) {
+        Long chatId = update.getMessage().getChatId();
+        if (user.getPhoneNumber() == null || user.getPhoneNumber().isBlank()) {
+            requestPhoneNumber(bot, chatId);
+            return;
+        }
+        if (user.getTelegramUsername() == null || user.getTelegramUsername().isBlank()) {
+            sendMessage(bot, chatId, "Tip: set a username in Telegram Settings so admins can identify you (Settings - Chat Settings - Username).");
+        }
+        menuService.showMenu(bot, update, user);
+    }
+
+    public void requestPhoneNumber(BingoTelegramBot bot, Long chatId) {
+        requestPhoneNumber(bot, chatId, "📱 *One more step — verify your account*\n\n" +
+                "To keep the room secure and show who you are, please **share your phone number** by tapping the button below.\n\n" +
+                "A username also helps admins recognize you — if you don't have one yet, set it in Telegram: *Settings → Username*.");
+    }
+
+    public void requestPhoneNumber(BingoTelegramBot bot, Long chatId, String text) {
+        SendMessage message = SendMessage.builder()
+                .chatId(chatId.toString())
+                .text(text)
+                .replyMarkup(requestPhoneMarkup())
+                .parseMode("Markdown")
+                .build();
+        try {
+            bot.execute(message);
+        } catch (Exception e) {
+            log.error("Failed to request phone number: {}", e.getMessage());
+        }
+    }
+
+    private org.telegram.telegrambots.meta.api.objects.replykeyboard.ReplyKeyboardMarkup requestPhoneMarkup() {
+        org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.KeyboardButton button =
+                org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.KeyboardButton.builder()
+                        .text(BotConstants.BTN_SHARE_PHONE)
+                        .requestContact(true)
+                        .build();
+        org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.KeyboardRow row =
+                new org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.KeyboardRow();
+        row.add(button);
+        org.telegram.telegrambots.meta.api.objects.replykeyboard.ReplyKeyboardMarkup markup =
+                org.telegram.telegrambots.meta.api.objects.replykeyboard.ReplyKeyboardMarkup.builder()
+                        .keyboardRow(row)
+                        .resizeKeyboard(true)
+                        .oneTimeKeyboard(true)
+                        .build();
+        return markup;
     }
 
     private String extractStartCode(String text) {

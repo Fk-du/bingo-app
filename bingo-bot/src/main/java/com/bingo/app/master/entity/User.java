@@ -44,6 +44,10 @@ public class User implements UserDetails {
     @Column(name = "last_name")
     private String lastName;
 
+    /** Phone number shared via Telegram's request_contact button. */
+    @Column(name = "phone_number")
+    private String phoneNumber;
+
     @Enumerated(EnumType.STRING)
     private Role role;
 
@@ -91,6 +95,9 @@ public class User implements UserDetails {
 
     @Override
     public String getUsername() { return String.valueOf(telegramId); }
+
+    /** The stored Telegram username (distinct from {@link #getUsername()}, which returns the login id). */
+    public String getTelegramUsername() { return username; }
 
     @Override
     public boolean isAccountNonExpired() { return true; }

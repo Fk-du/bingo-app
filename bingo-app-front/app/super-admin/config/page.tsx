@@ -14,6 +14,7 @@ const FIELD_HINTS: Record<string, string> = {
   entryFee: 'Default entry fee per game',
   maxPlayers: 'Default max players per game',
   minWithdrawal: 'Minimum amount a player can request for withdrawal',
+  ownerShareRate: '% of an admin\'s per-game commission that goes to you (0-100)',
 };
 
 const FIELD_LABELS: Record<string, string> = {
@@ -24,6 +25,7 @@ const FIELD_LABELS: Record<string, string> = {
   entryFee: 'Default Entry Fee',
   maxPlayers: 'Default Max Players',
   minWithdrawal: 'Minimum Withdrawal',
+  ownerShareRate: 'Owner Share Rate (%)',
 };
 
 export default function ConfigPage() {

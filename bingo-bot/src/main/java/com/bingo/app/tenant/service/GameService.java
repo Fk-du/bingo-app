@@ -118,6 +118,7 @@ public class GameService {
                 .stream()
                 .map(game -> tenantMapper.toDto(game).toBuilder()
                         .registered(gameCardRepository.existsByGameIdAndPlayerId(game.getId(), playerId))
+                        .registeredPlayers(gameCardRepository.countByGameId(game.getId()))
                         .activeGameId(activeGameId)
                         .build())
                 .toList();

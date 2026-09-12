@@ -42,6 +42,45 @@ public class UpdateHandler {
             handleTextMessage(update, bot);
             return;
         }
+
+        // Contact messages (phone share via request_contact button)
+        if (update.hasMessage() && update.getMessage().hasContact()) {
+            handleContact(update, bot);
+        }
+    }
+
+    private void handleContact(Update update, BingoTelegramBot bot) {
+        Long telegramId = update.getMessage().getFrom().getId();
+        Long chatId = update.getMessage().getChatId();
+        String username = update.getMessage().getFrom().getUserName();
+        String firstName = update.getMessage().getFrom().getFirstName();
+        String lastName = update.getMessage().getFrom().getLastName();
+
+        User user = userService.findByTelegramId(telegramId);
+        if (user == null) {
+            sendMessage(bot, chatId, "Welcome to BingoPlus! To get started, use the /start command with the invite link your admin provided.");
+            return;
+        }
+
+        userService.mergeTelegramProfile(telegramId, username, firstName, lastName);
+
+        var contact = update.getMessage().getContact();
+        if (contact.getPhoneNumber() != null
+                && (contact.getUserId() == null || contact.getUserId().equals(telegramId))) {
+            userService.savePhoneNumber(telegramId, contact.getPhoneNumber());
+        }
+
+        User fresh = userService.findByTelegramId(telegramId);
+        if (fresh.getPhoneNumber() == null || fresh.getPhoneNumber().isBlank()) {
+            startCommand.requestPhoneNumber(bot, chatId, "⚠️ We couldn't read your phone number. Please tap the button below again:");
+            return;
+        }
+
+        sendMessage(bot, chatId, "✅ Phone number saved! Welcome to BingoPlus.");
+        if (fresh.getTelegramUsername() == null || fresh.getTelegramUsername().isBlank()) {
+            sendMessage(bot, chatId, "Tip: set a username in Telegram Settings so admins can identify you (Settings - Chat Settings - Username).");
+        }
+        TenantHelper.runWithTenant(fresh, () -> menuService.showMenu(bot, update, fresh));
     }
 
     private void handleCallbackQuery(Update update, BingoTelegramBot bot) {
@@ -55,6 +94,11 @@ public class UpdateHandler {
         if (user == null) {
             log.warn("User not found for telegramId: {}", telegramId);
             sendMessage(bot, chatId, "User not found. Please use /start to register.");
+            return;
+        }
+
+        if (phoneMissing(user)) {
+            startCommand.requestPhoneNumber(bot, chatId);
             return;
         }
 
@@ -94,6 +138,11 @@ public class UpdateHandler {
             return;
         }
 
+        if (phoneMissing(user)) {
+            startCommand.requestPhoneNumber(bot, chatId);
+            return;
+        }
+
         // Menu button pressed: the reply keyboard sends the button label as text.
         String action = BotConstants.BUTTON_ACTIONS.get(text);
         if (action != null) {
@@ -112,6 +161,10 @@ public class UpdateHandler {
         // re-show the menu so users interact with buttons instead.
         sendMessage(bot, chatId, "Use the menu buttons below — there's nothing to type.");
         TenantHelper.runWithTenant(user, () -> menuService.showMenu(bot, update, user));
+    }
+
+    private boolean phoneMissing(User user) {
+        return user.getPhoneNumber() == null || user.getPhoneNumber().isBlank();
     }
 
     private void sendMessage(BingoTelegramBot bot, Long chatId, String text) {

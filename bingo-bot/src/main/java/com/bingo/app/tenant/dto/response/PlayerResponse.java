@@ -16,5 +16,6 @@ public record PlayerResponse(
         String firstName,
         String lastName,
         String username,
+        String phoneNumber,
         LocalDateTime createdAt
 ) {}

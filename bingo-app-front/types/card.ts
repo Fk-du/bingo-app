@@ -1,4 +1,4 @@
-import { AssignmentStatus } from './enums';
+import { AssignmentStatus, FundStatus } from './enums';
 
 export interface CardResponse {
   id: number;
@@ -6,7 +6,28 @@ export interface CardResponse {
   numbersHash: string;
   used: boolean;
   usageCount: number;
+  gamesWon?: number;
   winRate: number;
+  createdAt: string;
+  /** Parsed 5x5 grid (backend renders the card JSON), 0 = free centre. */
+  grid?: number[][];
+}
+
+export interface CardPoolResponse {
+  cards: CardResponse[];
+  total: number;
+  page: number;
+  size: number;
+}
+
+export interface CardRequestResponse {
+  id: number;
+  adminUserId: number;
+  quantity: number;
+  status: FundStatus;
+  approvedBy: number | null;
+  approvedAt: string | null;
+  rejectionReason: string | null;
   createdAt: string;
 }
 

@@ -51,7 +51,8 @@ public class ReportController {
                 "totalGames", aggregateGameCountAcrossTenants(),
                 "totalTransactions", aggregateTransactionCountAcrossTenants(),
                 "totalPlayers", totalPlayers,
-                "balance", aggregateBalanceAcrossTenants()
+                "balance", aggregateBalanceAcrossTenants(),
+                "platformFee", aggregatePlatformFeeAcrossTenants()
         );
         return ApiResponse.ok(report);
     }
@@ -88,6 +89,13 @@ public class ReportController {
     private long aggregateBalanceAcrossTenants() {
         long[] total = {0};
         eachTenant(() -> total[0] += walletService.getTotalCommissionInTenant().longValue());
+        return total[0];
+    }
+
+    /** Total owner revenue from all games across all agents (PLATFORM_FEE ledger). */
+    private long aggregatePlatformFeeAcrossTenants() {
+        long[] total = {0};
+        eachTenant(() -> total[0] += walletService.getTotalPlatformFeeInTenant().longValue());
         return total[0];
     }
 

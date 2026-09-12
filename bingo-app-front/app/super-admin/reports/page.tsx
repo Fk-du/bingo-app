@@ -28,6 +28,11 @@ export default function ReportsPage() {
           accent="gold"
         />
         <MetricCard
+          label="Owner Fees"
+          value={loadingRevenue ? '...' : revenue?.platformFee?.toLocaleString() ?? '0'}
+          accent="gold"
+        />
+        <MetricCard
           label="Total Games"
           value={loadingGames ? '...' : games?.length ?? '0'}
           accent="primary"

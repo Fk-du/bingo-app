@@ -17,7 +17,13 @@ public interface GameCardRepository extends JpaRepository<GameCard, Long> {
 
     Optional<GameCard> findByGameIdAndPlayerId(Long gameId, Long playerId);
 
+    Optional<GameCard> findByGameIdAndCardId(Long gameId, Long cardId);
+
+    List<GameCard> findAllByGameIdAndPlayerId(Long gameId, Long playerId);
+
     boolean existsByGameIdAndPlayerId(Long gameId, Long playerId);
+
+    long countByGameIdAndPlayerId(Long gameId, Long playerId);
 
     int countByGameId(Long gameId);
 
@@ -33,4 +39,7 @@ public interface GameCardRepository extends JpaRepository<GameCard, Long> {
 
     @Query("SELECT gc FROM GameCard gc JOIN Game g ON g.id = gc.gameId WHERE gc.playerId = :playerId AND g.status IN ('REGISTRATION_OPEN', 'STARTING', 'IN_PROGRESS', 'PAUSED', 'CLAIM_PENDING')")
     List<GameCard> findByPlayerIdAndActiveGames(@Param("playerId") Long playerId);
+
+    @Query("SELECT gc FROM GameCard gc JOIN Game g ON g.id = gc.gameId WHERE gc.playerId = :playerId AND g.status IN ('REGISTRATION_OPEN', 'STARTING', 'IN_PROGRESS', 'PAUSED', 'CLAIM_PENDING') AND gc.gameId != :excludedGameId")
+    List<GameCard> findByPlayerIdAndActiveGamesExcluding(@Param("playerId") Long playerId, @Param("excludedGameId") Long excludedGameId);
 }

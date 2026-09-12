@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { GameStatus, CalledNumberResponse, BingoClaimResponse } from '@/types';
+import { GameStatus, CalledNumberResponse, BingoClaimResponse, PlayerCardView } from '@/types';
 
 interface GameState {
   activeGameId: number | null;
@@ -8,7 +8,7 @@ interface GameState {
   calledNumbers: CalledNumberResponse[];
   totalNumbersCalled: number;
   prizePool: number;
-  playerCard: number[][] | null;
+  playerCards: PlayerCardView[] | null;
   isConnecting: boolean;
   claimPending: BingoClaimResponse | null;
   setActiveGame: (gameId: number) => void;
@@ -18,7 +18,7 @@ interface GameState {
   setCalledNumbers: (numbers: CalledNumberResponse[]) => void;
   setTotalNumbersCalled: (count: number) => void;
   setPrizePool: (pool: number) => void;
-  setPlayerCard: (card: number[][] | null) => void;
+  setPlayerCards: (cards: PlayerCardView[] | null) => void;
   setConnecting: (connecting: boolean) => void;
   setClaimPending: (claim: BingoClaimResponse | null) => void;
   reset: () => void;
@@ -31,7 +31,7 @@ export const useGameStore = create<GameState>((set) => ({
   calledNumbers: [],
   totalNumbersCalled: 0,
   prizePool: 0,
-  playerCard: null,
+  playerCards: null,
   isConnecting: true,
   claimPending: null,
   setActiveGame: (gameId) => set({ activeGameId: gameId }),
@@ -41,11 +41,11 @@ export const useGameStore = create<GameState>((set) => ({
   setCalledNumbers: (numbers) => set({ calledNumbers: numbers }),
   setTotalNumbersCalled: (count) => set({ totalNumbersCalled: count }),
   setPrizePool: (pool) => set({ prizePool: pool }),
-  setPlayerCard: (card) => set({ playerCard: card }),
+  setPlayerCards: (cards) => set({ playerCards: cards }),
   setConnecting: (connecting) => set({ isConnecting: connecting }),
   setClaimPending: (claim) => set({ claimPending: claim }),
   reset: () => set({
     activeGameId: null, gameStatus: null, startTime: null, calledNumbers: [],
-    totalNumbersCalled: 0, prizePool: 0, playerCard: null, claimPending: null,
+    totalNumbersCalled: 0, prizePool: 0, playerCards: null, claimPending: null,
   }),
 }));

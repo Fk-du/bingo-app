@@ -20,15 +20,26 @@ public record GameStateResponse(
         String customPatternCells,
         boolean autoMark,
         java.math.BigDecimal commissionPercent,
-        java.util.List<Integer> markedNumbers,
-        String fairnessHash,
-        BigDecimal prizePool,
-        int[][] playerCard,
+        List<PlayerCardView> playerCards,
         boolean hasPlayerCard,
         boolean isWinner,
-        boolean isBanned,
+        String fairnessHash,
+        BigDecimal prizePool,
         LocalDateTime startTime
 ) {
+    /**
+     * One of the caller's cards in this game. {@code banned} cards can no longer
+     * claim Bingo but stay on screen for watching.
+     */
+    public record PlayerCardView(
+            Long cardId,
+            int[][] numbers,
+            boolean winner,
+            boolean banned,
+            List<Integer> markedNumbers,
+            Boolean autoMark
+    ) {}
+
     public static String numberToLabel(Integer number) {
         if (number == null || number < 1 || number > 75) return String.valueOf(number);
         return switch ((number - 1) / 15) {

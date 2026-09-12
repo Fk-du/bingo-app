@@ -73,3 +73,36 @@ export interface AgentFundRequestCreate {
   amount: number;
   screenshotUrl?: string;
 }
+
+export interface OwnerFeeSettlementResponse {
+  id: number;
+  adminUserId: number;
+  amount: number;
+  screenshotUrl: string | null;
+  status: FundStatus;
+  approvedBy: number | null;
+  approvedAt: string | null;
+  rejectionReason: string | null;
+  createdAt: string;
+}
+
+export interface OwnerFeeSettlementCreate {
+  amount: number;
+  screenshotUrl?: string;
+}
+
+export interface OwnerFeeSummaryResponse {
+  accrued: number;
+  settled: number;
+  owed: number;
+}
+
+export interface AdminOwnerFeeSummaryResponse {
+  adminUserId: number;
+  businessName: string | null;
+  username: string | null;
+  accrued: number;
+  settled: number;
+  owed: number;
+  lastSettledAt: string | null;
+}

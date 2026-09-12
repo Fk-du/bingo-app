@@ -7,6 +7,10 @@ import {
   AgentFundRequestCreate,
   AdminWarningResponse,
   AgentStatsResponse,
+  OwnerFeeSettlementResponse,
+  OwnerFeeSummaryResponse,
+  OwnerFeeSettlementCreate,
+  AdminOwnerFeeSummaryResponse,
 } from '@/types';
 
 export const agentsApi = {
@@ -44,6 +48,26 @@ export const agentsApi = {
   },
   handleFundRequest: async (id: number, data: { action: string; reason?: string }) => {
     const res = await apiClient.patch<ApiResponse<string>>(`/agents/fund-requests/${id}`, data);
+    return res.data;
+  },
+  getFeeSummary: async () => {
+    const res = await apiClient.get<ApiResponse<OwnerFeeSummaryResponse>>('/agents/fee-summary');
+    return res.data;
+  },
+  getAllFeeSummary: async () => {
+    const res = await apiClient.get<ApiResponse<AdminOwnerFeeSummaryResponse[]>>('/agents/fee-summary/all');
+    return res.data;
+  },
+  createFeeSettlement: async (data: OwnerFeeSettlementCreate) => {
+    const res = await apiClient.post<ApiResponse<OwnerFeeSettlementResponse>>('/agents/fee-settlements', data);
+    return res.data;
+  },
+  getFeeSettlements: async () => {
+    const res = await apiClient.get<ApiResponse<OwnerFeeSettlementResponse[]>>('/agents/fee-settlements');
+    return res.data;
+  },
+  handleFeeSettlement: async (id: number, data: { action: string; reason?: string }) => {
+    const res = await apiClient.patch<ApiResponse<string>>(`/agents/fee-settlements/${id}`, data);
     return res.data;
   },
 };

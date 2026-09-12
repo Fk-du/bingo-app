@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { ProtectedRoute } from '@/components/common/ProtectedRoute';
 import { Role } from '@/types/enums';
 import { useAgents, useFundRequests } from '@/hooks/useAgents';
+import { useCardRequests } from '@/hooks/useCards';
 import { useGamesReport } from '@/hooks/useReports';
 import { MetricCard, SectionHeader, Surface } from '@/components/ui/Surface';
 import { GameStatus } from '@/types';
@@ -12,10 +13,12 @@ export default function SuperAdminDashboard() {
   const { data: agents, isLoading: loadingAgents } = useAgents();
   const { data: allGames, isLoading: loadingAllGames } = useGamesReport();
   const { data: fundRequests, isLoading: loadingFunds } = useFundRequests();
+  const { data: cardRequests } = useCardRequests();
 
   const activeAgents = agents?.filter((a) => a.active) ?? [];
   const pendingApproval = agents?.filter((a) => !a.approved && a.active) ?? [];
   const pendingFunds = fundRequests?.filter((r) => r.status === 'PENDING') ?? [];
+  const pendingCardRequests = cardRequests?.filter((r) => r.status === 'PENDING') ?? [];
 
   const endedGames = allGames?.filter((g) => g.status === GameStatus.ENDED) ?? [];
   const inProgressGames = allGames?.filter((g) => g.status === GameStatus.IN_PROGRESS) ?? [];
@@ -64,6 +67,14 @@ export default function SuperAdminDashboard() {
             value={pendingApproval.length}
             accent="gold"
             note={pendingApproval.length > 0 ? `${pendingApproval.length} agent(s) waiting` : 'All approved'}
+          />
+        </Link>
+        <Link href="/super-admin/cards">
+          <MetricCard
+            label="Card Requests"
+            value={cardRequests ? pendingCardRequests.length : '...'}
+            accent="warning"
+            note={pendingCardRequests.length > 0 ? 'pending card pool growth' : 'No pending requests'}
           />
         </Link>
       </div>

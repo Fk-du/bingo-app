@@ -14,6 +14,7 @@ public record AdminListItem(
         String username,
         String firstName,
         String lastName,
+        String phoneNumber,
         BigDecimal balance,
         BigDecimal frozenBalance,
         boolean active
@@ -24,9 +25,10 @@ public record AdminListItem(
                 .approved(user.isAdminApproved())
                 .businessName(user.getBusinessName())
                 .telegramId(user.getTelegramId())
-                .username(user.getUsername())
+                .username(user.getTelegramUsername())
                 .firstName(user.getFirstName())
                 .lastName(user.getLastName())
+                .phoneNumber(user.getPhoneNumber())
                 .balance(user.getBalance())
                 .frozenBalance(user.getFrozenBalance())
                 .active(user.isActive())

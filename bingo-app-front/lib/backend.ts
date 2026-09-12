@@ -12,7 +12,12 @@ export function getApiBaseUrl(): string {
 }
 
 export function getWsBaseUrl(): string {
-  return `${getBackendUrl()}/ws`;
+  if (typeof window === 'undefined') return `${getBackendUrl()}/ws`;
+  // Use the page's own origin so the WebSocket scheme always matches the page
+  // (Next.js rewrites proxy /ws to the backend). This prevents SockJS mixed-content
+  // errors like "an insecure SockJs connection may not be initiated from a page
+  // loaded over HTTPS" when the page is served over HTTPS.
+  return `${window.location.origin}/ws`;
 }
 
 function normalizeUrl(url: string): string {

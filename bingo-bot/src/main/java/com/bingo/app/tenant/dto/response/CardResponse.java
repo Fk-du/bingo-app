@@ -11,6 +11,8 @@ public record CardResponse(
         String numbersHash,
         boolean used,
         Integer usageCount,
+        Integer gamesWon,
         Double winRate,
-        LocalDateTime createdAt
+        LocalDateTime createdAt,
+        int[][] grid
 ) {}

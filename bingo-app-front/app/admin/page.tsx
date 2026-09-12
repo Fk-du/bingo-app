@@ -102,6 +102,12 @@ export default function AdminDashboard() {
             <p className="text-sm font-semibold text-bp-text">Request Funds</p>
           </Surface>
         </Link>
+        <Link href="/admin/cards">
+          <Surface className="p-4 text-center transition hover:border-bp-primary/40">
+            <IconPlus className="mx-auto mb-1 h-5 w-5 text-bp-primary" />
+            <p className="text-sm font-semibold text-bp-text">Card Pool</p>
+          </Surface>
+        </Link>
       </div>
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">

@@ -5,6 +5,7 @@ export interface RevenueReportResponse {
   totalTransactions: number;
   totalPlayers: number;
   balance: number;
+  platformFee?: number;
   totalCommission?: number;
   todayCommission?: number;
 }

@@ -4,11 +4,15 @@ import com.bingo.app.infrastructure.persistence.TenantContext;
 import com.bingo.app.tenant.exception.RequestAlreadyProcessedException;
 import com.bingo.app.tenant.exception.WalletException;
 import com.bingo.app.master.entity.AdminFundRequest;
+import com.bingo.app.master.entity.OwnerFeeSettlement;
 import com.bingo.app.master.entity.User;
 import com.bingo.app.master.enums.FundStatus;
 import com.bingo.app.master.enums.Role;
 import com.bingo.app.master.repository.AdminFundRequestRepository;
+import com.bingo.app.master.repository.OwnerFeeSettlementRepository;
 import com.bingo.app.master.repository.UserRepository;
+import com.bingo.app.master.dto.response.OwnerFeeSummaryResponse;
+import com.bingo.app.master.dto.response.AdminOwnerFeeSummaryResponse;
 import com.bingo.app.tenant.dto.mapper.TenantMapper;
 import com.bingo.app.tenant.dto.response.CoinRequestResponse;
 import com.bingo.app.tenant.dto.response.TransactionResponse;
@@ -33,6 +37,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 
 @Service
@@ -47,6 +52,7 @@ public class WalletService {
     private final CoinRequestRepository coinRequestRepository;
     private final WithdrawalRepository withdrawalRepository;
     private final AdminFundRequestRepository adminFundRequestRepository;
+    private final OwnerFeeSettlementRepository ownerFeeSettlementRepository;
     private final TenantMapper tenantMapper;
     private final NotificationService notificationService;
     private final ConfigService configService;
@@ -580,8 +586,176 @@ public class WalletService {
         notifyCommissionCredited(adminUserId, amount, gameId);
     }
 
+    /**
+     * Accrues the owner's per-game commission share into the tenant ledger as a
+     * PLATFORM_FEE row (no wallet credit — payment happens offline in cash).
+     */
+    @Transactional(transactionManager = "tenantTransactionManager")
+    public void accrueOwnerFee(BigDecimal amount, Long gameId) {
+        // Charge against an arbitrary (but deterministic) userId; the ledger is just
+        // an accounting row scoped to the tenant.  We use the super admin id so the
+        // row is consistently attributable to the owner.
+        Long ownerId = userRepository.findFirstByRole(Role.SUPER_ADMIN)
+                .map(User::getId)
+                .orElse(0L);
+        createTransaction(ownerId, TransactionType.PLATFORM_FEE, amount,
+                TransactionStatus.COMPLETED, gameId, "Owner share from game " + gameId);
+    }
+
+    // =========================================================
+    // OWNER FEE SETTLEMENTS
+    // =========================================================
 
     @Transactional(transactionManager = "tenantTransactionManager")
+    public OwnerFeeSettlement createOwnerFeeSettlement(Long adminUserId, BigDecimal amount, String screenshotUrl) {
+        User admin = userRepository.findById(adminUserId)
+                .orElseThrow(() -> new WalletException("Admin not found"));
+        if (admin.getRole() != Role.ADMIN) {
+            throw new WalletException("Only admins can submit owner fee settlements");
+        }
+        if (amount.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new WalletException("Amount must be positive");
+        }
+
+        OwnerFeeSettlement settlement = OwnerFeeSettlement.builder()
+                .adminUserId(adminUserId)
+                .amount(amount)
+                .screenshotUrl(screenshotUrl)
+                .status(FundStatus.PENDING)
+                .build();
+
+        OwnerFeeSettlement saved = ownerFeeSettlementRepository.save(settlement);
+        notifyOwnerFeeSettlementCreated(saved);
+        log.info("Admin {} submitted owner fee settlement of {}", adminUserId, amount);
+        return saved;
+    }
+
+    /** Atomic settle-approval: no wallet credit needed — cash was already exchanged offline. */
+    public void approveOwnerFeeSettlement(Long settlementId, Long superAdminId) {
+        User superAdmin = userRepository.findById(superAdminId)
+                .orElseThrow(() -> new WalletException("Super admin not found"));
+        if (superAdmin.getRole() != Role.SUPER_ADMIN) {
+            throw new WalletException("Only super admin can approve owner fee settlements");
+        }
+
+        OwnerFeeSettlement settlement = ownerFeeSettlementRepository.findById(settlementId)
+                .orElseThrow(() -> new WalletException("Settlement not found"));
+        if (settlement.getStatus() != FundStatus.PENDING) {
+            throw new RequestAlreadyProcessedException("Settlement already processed");
+        }
+
+        if (ownerFeeSettlementRepository.claimForProcessing(settlementId,
+                FundStatus.APPROVED, FundStatus.PENDING,
+                superAdminId, LocalDateTime.now(), null) == 0) {
+            throw new RequestAlreadyProcessedException("Settlement already processed");
+        }
+
+        notifyOwnerFeeSettlementApproved(settlement);
+        log.info("Owner fee settlement {} approved by super admin {}", settlementId, superAdminId);
+    }
+
+    @Transactional(transactionManager = "tenantTransactionManager")
+    public void rejectOwnerFeeSettlement(Long settlementId, Long superAdminId, String reason) {
+        if (ownerFeeSettlementRepository.claimForProcessing(settlementId,
+                FundStatus.REJECTED, FundStatus.PENDING,
+                superAdminId, LocalDateTime.now(), reason) == 0) {
+            throw new RequestAlreadyProcessedException("Settlement already processed");
+        }
+        var rejected = ownerFeeSettlementRepository.findById(settlementId).orElse(null);
+        if (rejected != null) {
+            notifyOwnerFeeSettlementRejected(rejected);
+        }
+        log.info("Owner fee settlement {} rejected by super admin {}", settlementId, superAdminId);
+    }
+
+    @Transactional(transactionManager = "tenantTransactionManager", readOnly = true)
+    public List<OwnerFeeSettlement> getPendingOwnerFeeSettlements() {
+        return ownerFeeSettlementRepository.findByStatusOrderByCreatedAtDesc(FundStatus.PENDING);
+    }
+
+    @Transactional(transactionManager = "tenantTransactionManager", readOnly = true)
+    public List<OwnerFeeSettlement> getAllOwnerFeeSettlements() {
+        return ownerFeeSettlementRepository.findAllByOrderByCreatedAtDesc();
+    }
+
+    @Transactional(transactionManager = "tenantTransactionManager", readOnly = true)
+    public List<OwnerFeeSettlement> getOwnerFeeSettlementsByAdmin(Long adminUserId) {
+        return ownerFeeSettlementRepository.findByAdminUserIdOrderByCreatedAtDesc(adminUserId);
+    }
+
+    @Transactional(transactionManager = "tenantTransactionManager", readOnly = true)
+    public OwnerFeeSummaryResponse getOwnerFeeSummaryForAdmin(Long adminUserId) {
+        BigDecimal accrued = getTotalPlatformFeeInTenant();
+        BigDecimal settled = ownerFeeSettlementRepository.sumApprovedByAdmin(adminUserId);
+        return OwnerFeeSummaryResponse.builder()
+                .accrued(accrued)
+                .settled(settled)
+                .owed(accrued.subtract(settled))
+                .build();
+    }
+
+    /**
+     * Owner fee status for every admin, so the super admin can see who has paid
+     * and who still owes. Accrued is scoped to each admin's own tenant DB.
+     */
+    public List<AdminOwnerFeeSummaryResponse> getOwnerFeeSummaryForAllAdmins() {
+        List<AdminOwnerFeeSummaryResponse> result = new ArrayList<>();
+        for (User admin : userRepository.findAllByRole(Role.ADMIN)) {
+            TenantContext.setTenant(TenantContext.tenantKeyForAdmin(admin.getId()));
+            try {
+                BigDecimal accrued = getTotalPlatformFeeInTenant();
+                BigDecimal settled = ownerFeeSettlementRepository.sumApprovedByAdmin(admin.getId());
+                LocalDateTime lastSettledAt = ownerFeeSettlementRepository
+                        .findTopByAdminUserIdAndStatusOrderByApprovedAtDesc(admin.getId(), FundStatus.APPROVED)
+                        .map(OwnerFeeSettlement::getApprovedAt)
+                        .orElse(null);
+                result.add(AdminOwnerFeeSummaryResponse.builder()
+                        .adminUserId(admin.getId())
+                        .businessName(admin.getBusinessName())
+                        .username(admin.getTelegramUsername())
+                        .accrued(accrued)
+                        .settled(settled)
+                        .owed(accrued.subtract(settled))
+                        .lastSettledAt(lastSettledAt)
+                        .build());
+            } catch (Exception e) {
+                log.warn("Failed to compute owner fee summary for admin {}: {}", admin.getId(), e.getMessage());
+            } finally {
+                TenantContext.clear();
+            }
+        }
+        return result;
+    }
+
+    // Owner fee settlement notifications (mirror of fund-request flow) --------------------------
+
+    private void notifyOwnerFeeSettlementCreated(OwnerFeeSettlement s) {
+        String adminName = playerDisplayName(s.getAdminUserId());
+        for (User superAdmin : userRepository.findAllByRole(Role.SUPER_ADMIN)) {
+            notify(superAdmin.getId(), "OWNER_FEE_SETTLEMENT",
+                    "Owner fee settlement submitted",
+                    adminName + " settled " + fmt(s.getAmount()) + " in owner fees.",
+                    "OWNER_FEE_SETTLEMENT", s.getId(), null);
+        }
+    }
+
+    private void notifyOwnerFeeSettlementApproved(OwnerFeeSettlement s) {
+        notify(s.getAdminUserId(), "OWNER_FEE_SETTLEMENT_APPROVED",
+                "Fee settlement approved",
+                "Your owner fee settlement of " + fmt(s.getAmount()) + " was approved.",
+                "OWNER_FEE_SETTLEMENT", s.getId(),
+                "\u2705 Owner fee settlement approved\n" + fmt(s.getAmount()) + " has been marked as paid.");
+    }
+
+    private void notifyOwnerFeeSettlementRejected(OwnerFeeSettlement s) {
+        String why = (s.getRejectionReason() == null || s.getRejectionReason().isBlank())
+                ? "Please contact support." : s.getRejectionReason();
+        notify(s.getAdminUserId(), "OWNER_FEE_SETTLEMENT_REJECTED",
+                "Fee settlement rejected",
+                "Your owner fee settlement of " + fmt(s.getAmount()) + " was rejected. Reason: " + why,
+                null, null,
+                "\u274C Owner fee settlement rejected\n" + fmt(s.getAmount()) + "\nReason: " + why);
+    }
 
     // =========================================================
     // PRIVATE HELPER METHODS
@@ -616,7 +790,7 @@ public class WalletService {
                     if (u.getFirstName() != null && !u.getFirstName().isBlank()) {
                         return u.getFirstName() + (u.getLastName() != null && !u.getLastName().isBlank() ? " " + u.getLastName() : "");
                     }
-                    return u.getUsername() != null ? u.getUsername() : "Player #" + userId;
+                    return u.getTelegramUsername() != null ? u.getTelegramUsername() : "Player #" + userId;
                 })
                 .orElse("Player #" + userId);
     }
@@ -786,6 +960,12 @@ public class WalletService {
     public BigDecimal getTotalCommissionInTenant() {
         return sumAmounts(transactionRepository.findByType(TransactionType.AGENT_COMMISSION.name()))
                 .add(sumAmounts(transactionRepository.findByType(TransactionType.UNCLAIMED_PRIZE.name())));
+    }
+
+    /** Total owner (platform) revenue from settled games in the active tenant. */
+    @Transactional(transactionManager = "tenantTransactionManager", readOnly = true)
+    public BigDecimal getTotalPlatformFeeInTenant() {
+        return sumAmounts(transactionRepository.findByType(TransactionType.PLATFORM_FEE.name()));
     }
 
     private BigDecimal sumAmounts(List<Transaction> txns) {

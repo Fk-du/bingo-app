@@ -6,10 +6,11 @@ import { useAuthStore } from '@/store/auth.store';
 import { Role } from '@/types/enums';
 import { readyTelegramApp, expandTelegramApp, getTelegramInitData } from '@/lib/telegram';
 import { useLogin } from '@/hooks/useAuth';
+import { VerificationRequired } from '@/components/common/VerificationRequired';
 
 export default function Home() {
   const router = useRouter();
-  const { isAuthenticated, role, logout } = useAuthStore();
+  const { isAuthenticated, role, user, logout } = useAuthStore();
   const { mutate: login, isPending, error } = useLogin();
   const [tgReady, setTgReady] = useState(false);
   const [telegramAvailable, setTelegramAvailable] = useState<boolean | null>(null);
@@ -66,7 +67,7 @@ export default function Home() {
   }, [tgReady, logout, login]);
 
   useEffect(() => {
-    if (isAuthenticated && role) {
+    if (isAuthenticated && role && user?.verified) {
       switch (role) {
         case Role.SUPER_ADMIN:
           router.replace('/super-admin');
@@ -79,7 +80,7 @@ export default function Home() {
           break;
       }
     }
-  }, [isAuthenticated, role, router]);
+  }, [isAuthenticated, role, user, router]);
 
   if (isPending) {
     return (
@@ -87,6 +88,10 @@ export default function Home() {
         <p className="text-lg">Authenticating...</p>
       </div>
     );
+  }
+
+  if (isAuthenticated && user && !user.verified) {
+    return <VerificationRequired />;
   }
 
   if (!tgReady) {

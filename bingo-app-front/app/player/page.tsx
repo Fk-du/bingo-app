@@ -4,11 +4,11 @@ import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { ProtectedRoute } from '@/components/common/ProtectedRoute';
 import { Role, GameStatus } from '@/types/enums';
-import { useActiveGames, useRegisterForGame } from '@/hooks/useGames';
+import { useActiveGames } from '@/hooks/useGames';
 import { useAuthStore } from '@/store/auth.store';
 import { useWallet } from '@/hooks/usePlayers';
-import { getApiErrorMessage } from '@/api/client';
 import { GameList } from '@/components/games/GameList';
+import { CardPickerModal } from '@/components/games/CardPickerModal';
 import { TabBar, Surface } from '@/components/ui/Surface';
 import { IconCoin, IconWallet } from '@/components/ui/Icons';
 
@@ -16,9 +16,8 @@ type LobbyTab = 'open' | 'my';
 
 export default function PlayerGamesPage() {
   const { data: games, isLoading } = useActiveGames();
-  const { mutate: register } = useRegisterForGame();
   const [tab, setTab] = useState<LobbyTab>('open');
-  const [registeringId, setRegisteringId] = useState<number | null>(null);
+  const [pickerGame, setPickerGame] = useState<{ id: number; entryFee: number } | null>(null);
   const [notice, setNotice] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const user = useAuthStore((s) => s.user);
 
@@ -29,18 +28,14 @@ export default function PlayerGamesPage() {
   }, [notice]);
 
   const handleRegister = (id: number) => {
-    setRegisteringId(id);
-    setNotice(null);
-    register(id, {
-      onSuccess: () => {
-        setRegisteringId(null);
-        setNotice({ type: 'success', text: 'Registered! Tap the game to view your card.' });
-      },
-      onError: (err) => {
-        setRegisteringId(null);
-        setNotice({ type: 'error', text: getApiErrorMessage(err) });
-      },
-    });
+    const game = games?.find((g) => g.id === id);
+    if (!game) return;
+    setPickerGame({ id: game.id, entryFee: game.entryFee });
+  };
+
+  const handlePickerDone = (ok: boolean) => {
+    setPickerGame(null);
+    if (ok) setNotice({ type: 'success', text: 'Registered! Tap the game to view your card.' });
   };
 
   const jackpotTotal = useMemo(
@@ -127,9 +122,18 @@ export default function PlayerGamesPage() {
             <div className="h-32 animate-pulse rounded-2xl bg-bp-surface" />
           </div>
         ) : (
-          <GameList games={filteredGames} role="player" onRegister={handleRegister} registeringId={registeringId} />
+          <GameList games={filteredGames} role="player" onRegister={handleRegister} registeringId={null} />
         )}
       </div>
+
+      {pickerGame && (
+        <CardPickerModal
+          gameId={pickerGame.id}
+          entryFee={pickerGame.entryFee}
+          onClose={() => setPickerGame(null)}
+          onRegistered={() => handlePickerDone(true)}
+        />
+      )}
     </ProtectedRoute>
   );
 }

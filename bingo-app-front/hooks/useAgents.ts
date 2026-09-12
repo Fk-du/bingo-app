@@ -84,3 +84,53 @@ export function useHandleFundRequest() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['fund-requests'] }),
   });
 }
+
+export function useOwnerFeeSummary() {
+  return useQuery({
+    queryKey: ['fee-summary'],
+    queryFn: async () => {
+      const res = await agentsApi.getFeeSummary();
+      return res.data;
+    },
+  });
+}
+
+export function useAllOwnerFeeSummary() {
+  return useQuery({
+    queryKey: ['fee-summary', 'all'],
+    queryFn: async () => {
+      const res = await agentsApi.getAllFeeSummary();
+      return res.data;
+    },
+  });
+}
+
+export function useOwnerFeeSettlements() {
+  return useQuery({
+    queryKey: ['fee-settlements'],
+    queryFn: async () => {
+      const res = await agentsApi.getFeeSettlements();
+      return res.data;
+    },
+  });
+}
+
+export function useCreateFeeSettlement() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: agentsApi.createFeeSettlement,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['fee-settlements'] }),
+  });
+}
+
+export function useHandleFeeSettlement() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, action, reason }: { id: number; action: string; reason?: string }) =>
+      agentsApi.handleFeeSettlement(id, { action, reason }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['fee-settlements'] });
+      queryClient.invalidateQueries({ queryKey: ['fee-summary'] });
+    },
+  });
+}

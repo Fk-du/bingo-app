@@ -63,7 +63,25 @@ export default function ProfilePage() {
         <h1 className="mt-3 text-xl font-bold text-bp-text">{displayName}</h1>
         <p className="text-sm text-bp-muted">Player</p>
         {user?.username && <p className="text-xs text-bp-muted">@{user.username}</p>}
+        {user?.phoneNumber && <p className="text-xs text-bp-muted">📞 {user.phoneNumber}</p>}
       </div>
+
+      {!user?.phoneNumber && (
+        <Surface className="mb-3 border-bp-warning/40 p-4">
+          <p className="text-sm font-semibold text-bp-warning">Verify your account</p>
+          <p className="mt-1 text-xs text-bp-muted">
+            Open the BingoPlus bot and tap <span className="text-bp-text">Share Phone Number</span> so we can verify your account.
+          </p>
+          <a
+            href={process.env.NEXT_PUBLIC_BOT_LINK ?? `https://t.me/${process.env.NEXT_PUBLIC_BOT_USERNAME ?? 'lucky_winners_bingo_test_bot'}`}
+            target="_blank"
+            rel="noreferrer"
+            className="mt-3 inline-block"
+          >
+            <ActionButton variant="primary">Open Bot</ActionButton>
+          </a>
+        </Surface>
+      )}
 
       <Surface className="divide-y divide-bp-border overflow-hidden p-0">
         {MENU_ITEMS.map((item) =>

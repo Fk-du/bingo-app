@@ -41,6 +41,9 @@ public class ConfigService {
     @Value("${app.game.min-withdrawal:10}")
     private int defaultMinWithdrawal;
 
+    @Value("${bingo.fees.owner-share-rate-percent:20}")
+    private BigDecimal defaultOwnerShareRate;
+
     @PostConstruct
     public void seedDefaults() {
         try {
@@ -91,7 +94,8 @@ public class ConfigService {
                 "autoCallInterval", String.valueOf(defaultAutoCallInterval),
                 "entryFee", String.valueOf(defaultEntryFee),
                 "maxPlayers", String.valueOf(defaultMaxPlayers),
-                "minWithdrawal", String.valueOf(defaultMinWithdrawal)
+                "minWithdrawal", String.valueOf(defaultMinWithdrawal),
+                "ownerShareRate", String.valueOf(defaultOwnerShareRate)
         );
     }
 
@@ -125,8 +129,26 @@ public class ConfigService {
                 "autoCallInterval", defaultAutoCallInterval,
                 "entryFee", defaultEntryFee,
                 "maxPlayers", defaultMaxPlayers,
-                "minWithdrawal", defaultMinWithdrawal
+                "minWithdrawal", defaultMinWithdrawal,
+                "ownerShareRate", defaultOwnerShareRate
         );
+    }
+
+    /**
+     * Share (in %) the super admin takes from each admin's per-game commission.
+     * The agent keeps (100 - ownerShareRate)% of their own commission; the owner
+     * gets credited a PLATFORM_FEE for every settled game.
+     */
+    public BigDecimal getOwnerShareRate() {
+        try {
+            Object value = getAll().get("ownerShareRate");
+            if (value instanceof Number number) {
+                return BigDecimal.valueOf(number.doubleValue());
+            }
+        } catch (Exception e) {
+            log.warn("Failed to read ownerShareRate config, using default: {}", e.getMessage());
+        }
+        return defaultOwnerShareRate;
     }
 
     private Object parseValue(String raw) {

@@ -35,6 +35,10 @@ public class Card {
     private Integer usageCount = 0;
 
     @Builder.Default
+    @Column(name = "games_won")
+    private Integer gamesWon = 0;
+
+    @Builder.Default
     @Column(name = "win_rate")
     private Double winRate = 0.0;
 

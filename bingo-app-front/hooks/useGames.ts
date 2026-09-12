@@ -77,11 +77,12 @@ export function useEndGame() {
 export function useRegisterForGame() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (id: number) => gamesApi.register(id),
+    mutationFn: ({ id, cardId }: { id: number; cardId?: number }) => gamesApi.register(id, cardId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['games'] });
       queryClient.invalidateQueries({ queryKey: ['games', 'state'] });
       queryClient.invalidateQueries({ queryKey: ['wallet'] });
+      queryClient.invalidateQueries({ queryKey: ['cards'] });
     },
   });
 }
@@ -100,15 +101,15 @@ export function usePendingClaims(gameId: number) {
 
 export function useSaveMarks() {
   return useMutation({
-    mutationFn: ({ id, markedNumbers, autoMark }: { id: number; markedNumbers: number[]; autoMark?: boolean }) =>
-      gamesApi.saveMarks(id, markedNumbers, autoMark),
+    mutationFn: ({ id, cardId, markedNumbers, autoMark }: { id: number; cardId?: number; markedNumbers: number[]; autoMark?: boolean }) =>
+      gamesApi.saveMarks(id, cardId, markedNumbers, autoMark),
   });
 }
 
 export function useClaimBingo() {
   return useMutation({
-    mutationFn: ({ id, markedNumbers, autoMark }: { id: number; markedNumbers?: number[]; autoMark?: boolean }) =>
-      gamesApi.claim(id, markedNumbers, autoMark),
+    mutationFn: ({ id, cardId, markedNumbers, autoMark }: { id: number; cardId?: number; markedNumbers?: number[]; autoMark?: boolean }) =>
+      gamesApi.claim(id, cardId, markedNumbers, autoMark),
   });
 }
 

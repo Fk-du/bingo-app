@@ -8,6 +8,7 @@ export interface PlayerResponse {
   firstName?: string;
   lastName?: string;
   username?: string;
+  phoneNumber?: string;
   createdAt: string;
 }
 

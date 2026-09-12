@@ -27,6 +27,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Objects;
 
 @Service
 @Slf4j
@@ -76,7 +77,7 @@ public class UserService {
     public User findOrCreateUser(Long telegramId, String username, String firstName, String lastName, String startParam) {
         User existing = userRepository.findByTelegramId(telegramId).orElse(null);
         if (existing != null) {
-            return existing;
+            return refreshTelegramProfile(existing, username, firstName, lastName);
         }
 
         // New user with invite code — register through InviteService (outside @Transactional to avoid poisoning)
@@ -89,6 +90,52 @@ public class UserService {
         }
 
         return createNewUser(telegramId, username, firstName, lastName);
+    }
+
+    /**
+     * Overwrites the stored Telegram profile with the live values Telegram just
+     * sent. Usernames change and first/last names get edited, so we treat the
+     * last seen Telegram data as authoritative — admins then see the real
+     * username instead of the generic {@code user_<id>} placeholder.
+     */
+    public User refreshTelegramProfile(User user, String username, String firstName, String lastName) {
+        if (user == null) {
+            return null;
+        }
+        boolean changed = false;
+        if (username != null && !username.equals(user.getTelegramUsername())) {
+            user.setUsername(username);
+            changed = true;
+        }
+        if (firstName != null && !firstName.isBlank() && !Objects.equals(firstName, user.getFirstName())) {
+            user.setFirstName(firstName);
+            changed = true;
+        }
+        if (lastName != null && !Objects.equals(lastName, user.getLastName())) {
+            user.setLastName(lastName);
+            changed = true;
+        }
+        return changed ? userRepository.save(user) : user;
+    }
+
+    @Transactional
+    public User mergeTelegramProfile(Long telegramId, String username, String firstName, String lastName) {
+        User user = userRepository.findByTelegramId(telegramId).orElse(null);
+        return refreshTelegramProfile(user, username, firstName, lastName);
+    }
+
+    /** Persists the phone number shared via Telegram's request_contact button. */
+    @Transactional
+    public User savePhoneNumber(Long telegramId, String phoneNumber) {
+        User user = userRepository.findByTelegramId(telegramId).orElse(null);
+        if (user == null) {
+            throw new RuntimeException("User not found for telegramId=" + telegramId);
+        }
+        if (phoneNumber != null && !phoneNumber.isBlank()) {
+            user.setPhoneNumber(phoneNumber.trim());
+            return userRepository.save(user);
+        }
+        return user;
     }
 
     private User createNewUser(Long telegramId, String username, String firstName, String lastName) {

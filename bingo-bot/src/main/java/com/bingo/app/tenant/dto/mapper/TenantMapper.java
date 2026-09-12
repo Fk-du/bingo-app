@@ -4,12 +4,17 @@ import com.bingo.app.master.entity.User;
 import com.bingo.app.tenant.dto.response.*;
 import com.bingo.app.tenant.entity.*;
 import com.bingo.app.tenant.service.GameEngineService;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
 
 @Component
+@RequiredArgsConstructor
 public class TenantMapper {
+
+    private final ObjectMapper objectMapper;
 
     public GameResponse toDto(Game game) {
         if (game == null) return null;
@@ -55,9 +60,20 @@ public class TenantMapper {
                 .numbersHash(card.getNumbersHash())
                 .used(card.isUsed())
                 .usageCount(card.getUsageCount())
+                .gamesWon(card.getGamesWon())
                 .winRate(card.getWinRate())
                 .createdAt(card.getCreatedAt())
+                .grid(parseGrid(card.getNumbers()))
                 .build();
+    }
+
+    private int[][] parseGrid(String numbers) {
+        if (numbers == null || numbers.isBlank()) return null;
+        try {
+            return objectMapper.readValue(numbers, int[][].class);
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     public PlayerCardResponse toDto(PlayerCard playerCard) {
@@ -189,13 +205,11 @@ public class TenantMapper {
                 .customPatternCells(state.getCustomPatternCells())
                 .fairnessHash(state.getFairnessHash())
                 .prizePool(state.getPrizePool())
-                .playerCard(state.getPlayerCard())
+                .playerCards(state.getPlayerCards())
                 .autoMark(Boolean.TRUE.equals(state.getAutoMark()))
                 .commissionPercent(state.getCommissionPercent())
-                .markedNumbers(state.getMarkedNumbers())
                 .hasPlayerCard(state.isHasPlayerCard())
                 .isWinner(state.isWinner())
-                .isBanned(state.isBanned())
                 .startTime(state.getStartTime())
                 .build();
     }

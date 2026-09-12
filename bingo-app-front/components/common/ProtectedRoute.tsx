@@ -1,6 +1,7 @@
 import { ReactNode } from 'react';
 import { useAuthStore } from '@/store/auth.store';
 import { Role } from '@/types';
+import { VerificationRequired } from '@/components/common/VerificationRequired';
 
 interface ProtectedRouteProps {
   children: ReactNode;
@@ -8,7 +9,7 @@ interface ProtectedRouteProps {
 }
 
 export function ProtectedRoute({ children, roles }: ProtectedRouteProps) {
-  const { isAuthenticated, role } = useAuthStore();
+  const { isAuthenticated, role, user } = useAuthStore();
 
   if (!isAuthenticated) {
     return (
@@ -16,6 +17,10 @@ export function ProtectedRoute({ children, roles }: ProtectedRouteProps) {
         <p>Please authenticate via Telegram to continue.</p>
       </div>
     );
+  }
+
+  if (user && !user.verified) {
+    return <VerificationRequired />;
   }
 
   if (roles && role && !roles.includes(role)) {

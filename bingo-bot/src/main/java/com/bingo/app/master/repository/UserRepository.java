@@ -17,6 +17,8 @@ public interface UserRepository extends JpaRepository<User, Long> {
 
     Optional<User> findByTelegramId(Long telegramId);
 
+    Optional<User> findFirstByRole(Role role);
+
     List<User> findAllByRole(Role role);
 
     List<User> findAllByAdminUserId(Long adminUserId);

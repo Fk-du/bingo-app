@@ -3,6 +3,8 @@ package com.bingo.app.tenant.controller;
 import com.bingo.app.common.dto.ApiResponse;
 import com.bingo.app.infrastructure.security.UserPrincipal;
 import com.bingo.app.infrastructure.storage.LocalScreenshotStorage;
+import com.bingo.app.master.enums.Role;
+import com.bingo.app.master.entity.User;
 import com.bingo.app.master.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.core.io.UrlResource;
@@ -28,15 +30,13 @@ public class ScreenshotController {
     public ApiResponse<String> upload(
             @AuthenticationPrincipal UserPrincipal principal,
             @RequestParam("file") MultipartFile file) {
-        // Every agent gets their own folder: data/screenshots/<agent-name>/...
-        var user = principal.getUser();
-        String agentFolder = user.getAdminUserId() == null ? "unsorted"
-                : userRepository.findById(user.getAdminUserId())
-                        .map(a -> a.getBusinessName() != null && !a.getBusinessName().isBlank()
-                                ? a.getBusinessName()
-                                : a.getUsername() != null ? a.getUsername() : "agent-" + a.getId())
-                        .orElse("agent-" + user.getAdminUserId());
-        String filename = screenshotStorage.store(file, agentFolder);
+        // Admins & superadmins file their fund-request proof under "unsorted";
+        // players upload under their agent's folder: data/screenshots/<agent>/...
+        String folder = switch (principal.getUser().getRole()) {
+            case PLAYER -> resolveAgentFolderOf(principal.getUser());
+            default -> "unsorted";
+        };
+        String filename = screenshotStorage.store(file, folder);
         return ApiResponse.ok("Screenshot uploaded", "/api/v1/screenshots/" + filename);
     }
 
@@ -48,18 +48,15 @@ public class ScreenshotController {
         String filepath = request.getRequestURI().substring(request.getRequestURI().indexOf(prefix) + prefix.length());
         String decoded = java.net.URLDecoder.decode(filepath, java.nio.charset.StandardCharsets.UTF_8);
 
-        // Ownership check: resolve the allowed folder for this user
-        var user = principal.getUser();
-        String allowedFolder = user.getAdminUserId() == null ? "unsorted"
-                : userRepository.findById(user.getAdminUserId())
-                        .map(a -> a.getBusinessName() != null && !a.getBusinessName().isBlank()
-                                ? a.getBusinessName()
-                                : a.getUsername() != null ? a.getUsername() : "agent-" + a.getId())
-                        .orElse("agent-" + user.getAdminUserId());
+        // Ownership check: which folder may this user read? The folder is normalized
+        // the same way files were stored, so business names with spaces, uppercase or
+        // special characters match the physical folder on disk.
+        String allowedFolder = resolveReadableFolder(principal.getUser());
 
         // Extract the first path segment (agent folder name)
         String folderSegment = decoded.contains("/") ? decoded.substring(0, decoded.indexOf('/')) : "";
-        if (!folderSegment.equals(allowedFolder) && !"unsorted".equals(folderSegment)) {
+        boolean superAdmin = principal.getUser().getRole() == Role.SUPER_ADMIN;
+        if (!superAdmin && !folderSegment.equals(allowedFolder) && !"unsorted".equals(folderSegment)) {
             return ResponseEntity.status(403).build();
         }
 
@@ -72,5 +69,43 @@ public class ScreenshotController {
                 .contentType(stored.mediaType())
                 .header(HttpHeaders.CACHE_CONTROL, "private, max-age=3600")
                 .body(resource);
+    }
+
+    /**
+     * Folder an ADMIN/SUPER_ADMIN may read on serve: their own agent folder
+     * (where their players' payment proofs live) or {@code unsorted} for admins
+     * without players yet, and for fund-request proof uploaded by admins. Players
+     * may only read their own agent's folder.
+     */
+    private String resolveReadableFolder(User user) {
+        return switch (user.getRole()) {
+            case SUPER_ADMIN -> "unsorted";
+            case ADMIN -> resolveOwnFolder(user);
+            case PLAYER -> resolveAgentFolderOf(user);
+        };
+    }
+
+    /**
+     * The folder a player's proof is stored under: their agent's (admin's)
+     * business name or username, normalized exactly like
+     * {@link LocalScreenshotStorage} stores it.
+     */
+    private String resolveAgentFolderOf(User player) {
+        if (player.getAdminUserId() == null) {
+            return "unsorted";
+        }
+        return userRepository.findById(player.getAdminUserId())
+                .map(this::resolveOwnFolder)
+                .orElse("agent-" + player.getAdminUserId());
+    }
+
+    /**
+     * The folder an admin's own players upload to: their business name/username.
+     */
+    private String resolveOwnFolder(User admin) {
+        String name = admin.getBusinessName() != null && !admin.getBusinessName().isBlank()
+                ? admin.getBusinessName()
+                : admin.getTelegramUsername() != null ? admin.getTelegramUsername() : "agent-" + admin.getId();
+        return LocalScreenshotStorage.sanitizeFolder(name);
     }
 }

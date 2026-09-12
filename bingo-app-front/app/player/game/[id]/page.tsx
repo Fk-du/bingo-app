@@ -7,7 +7,7 @@ import { Role, GameStatus } from '@/types';
 import { useGameWebSocket } from '@/hooks/useWebSocket';
 import { useGameStore } from '@/store/game.store';
 import { useAuthStore } from '@/store/auth.store';
-import { useClaimBingo, useActiveGames, useRegisterForGame, useGameState, useSaveMarks, usePendingClaimCards } from '@/hooks/useGames';
+import { useClaimBingo, useActiveGames, useGameState, useSaveMarks, usePendingClaimCards } from '@/hooks/useGames';
 import type { PendingClaimCard } from '@/types';
 import { getApiErrorMessage } from '@/api/client';
 import { useCountdown } from '@/hooks/useCountdown';
@@ -18,6 +18,7 @@ import { IconBack } from '@/components/ui/Icons';
 import { patternLabel } from '@/components/games/CreateGameForm';
 import { PatternMini, patternProgress } from '@/components/games/PatternMini';
 import { FairnessPanel } from '@/components/games/FairnessPanel';
+import { CardPickerModal } from '@/components/games/CardPickerModal';
 import { useNumberAnnouncer } from '@/hooks/useNumberAnnouncer';
 import { netPrize } from '@/lib/prize';
 
@@ -41,7 +42,6 @@ export default function PlayerGamePage({ params }: { params: Promise<{ id: strin
   useGameWebSocket(gameId);
   const { mutate: claimBingo, isPending: isClaiming } = useClaimBingo();
   const { mutate: saveMarks } = useSaveMarks();
-  const { mutate: register } = useRegisterForGame();
   const { data: games } = useActiveGames();
   const { data: gameState, isLoading: stateLoading } = useGameState(gameId);
   const {
@@ -49,14 +49,14 @@ export default function PlayerGamePage({ params }: { params: Promise<{ id: strin
     startTime: storeStartTime,
     calledNumbers,
     prizePool,
-    playerCard,
+    playerCards,
     isConnecting,
     setGameStatus,
     setStartTime: setStoreStartTime,
     setCalledNumbers,
     setTotalNumbersCalled,
     setPrizePool,
-    setPlayerCard,
+    setPlayerCards,
   } = useGameStore();
 
   const calledSet = useMemo(() => new Set(calledNumbers.map((n) => n.number)), [calledNumbers]);
@@ -64,10 +64,11 @@ export default function PlayerGamePage({ params }: { params: Promise<{ id: strin
   const [claimType, setClaimType] = useState<'win' | 'pending' | 'banned'>('pending');
   const [error, setError] = useState<string | null>(null);
   const [registerSuccess, setRegisterSuccess] = useState(false);
-  const [registering, setRegistering] = useState(false);
-  const [marked, setMarked] = useState<Set<number>>(new Set());
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [markedByCard, setMarkedByCard] = useState<Record<number, Set<number>>>({});
   const [autoMark, setAutoMark] = useState<boolean>(true);
   const autoMarkInitialized = useRef(false);
+  const manualMarksSeeded = useRef(false);
   const manualDaub = !autoMark;
 
   const currentUserId = useAuthStore((s) => s.user?.id);
@@ -86,7 +87,7 @@ export default function PlayerGamePage({ params }: { params: Promise<{ id: strin
       Promise.resolve().then(() => setClaimsDismissed(false));
     }
   }, [pendingClaimCards]);
-  const marksSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const marksSaveTimer = useRef<{ [cardId: number]: ReturnType<typeof setTimeout> | null }>({});
 
   // Restore the player's auto-mark preference and persisted daubs after refresh/reconnect.
   useEffect(() => {
@@ -96,15 +97,16 @@ export default function PlayerGamePage({ params }: { params: Promise<{ id: strin
         autoMarkInitialized.current = true;
         setAutoMark(Boolean(gameState.autoMark));
       }
-      if (!gameState.autoMark) {
-        setMarked((prev) => {
-          if (prev.size > 0 || !gameState?.markedNumbers?.length) return prev;
-          return new Set(gameState.markedNumbers);
-        });
+      if (gameState.autoMark === false && !manualMarksSeeded.current && gameState.playerCards) {
+        manualMarksSeeded.current = true;
+        const seed: Record<number, Set<number>> = {};
+        for (const pc of gameState.playerCards) {
+          if (pc.markedNumbers?.length) seed[pc.cardId] = new Set(pc.markedNumbers);
+        }
+        if (Object.keys(seed).length > 0) setMarkedByCard((prev) => ({ ...prev, ...seed }));
       }
     });
   }, [gameState]);
-  const [claimBanned, setClaimBanned] = useState(false);
 
   const lastCalledNumber =
     calledNumbers.length > 0 ? calledNumbers[calledNumbers.length - 1].number : null;
@@ -115,17 +117,16 @@ export default function PlayerGamePage({ params }: { params: Promise<{ id: strin
   const { muted, toggleMuted } = useNumberAnnouncer(calledNumberValues);
   const gameOver =
     gameStatus === GameStatus.ENDED ? { won: Boolean(gameState?.isWinner) } : null;
-  const bannedState = claimBanned || (gameState?.isBanned ?? false);
 
   useEffect(() => {
     if (!gameState) return;
     setGameStatus(gameState.status);
     setPrizePool(gameState.prizePool);
-    setPlayerCard(gameState.playerCard);
+    setPlayerCards(gameState.playerCards);
     if (gameState.startTime) {
       setStoreStartTime(gameState.startTime);
     }
-    if (gameState.playerCard) {
+    if (gameState.playerCards && gameState.playerCards.length > 0) {
       const calledAsObjects = gameState.calledNumbers.map((n, i) => ({
         id: i,
         gameId,
@@ -136,46 +137,44 @@ export default function PlayerGamePage({ params }: { params: Promise<{ id: strin
       setCalledNumbers(calledAsObjects);
       setTotalNumbersCalled(gameState.calledNumbers.length);
     }
-  }, [gameState, gameId, setCalledNumbers, setGameStatus, setPlayerCard, setPrizePool, setTotalNumbersCalled, setStoreStartTime]);
+  }, [gameState, gameId, setCalledNumbers, setGameStatus, setPlayerCards, setPrizePool, setTotalNumbersCalled, setStoreStartTime]);
 
   const game = games?.find((g) => g.id === gameId);
-  const hasCard = playerCard !== null;
+  const hasAnyCard = (playerCards?.length ?? 0) > 0;
   const isLive = gameStatus === GameStatus.IN_PROGRESS;
   const isStarting = gameStatus === GameStatus.STARTING;
   const countdown = useCountdown(isStarting ? (storeStartTime ?? gameState?.startTime ?? game?.startTime ?? null) : null);
 
   const handleRegister = () => {
-    setRegistering(true);
     setError(null);
-    register(gameId, {
-      onSuccess: () => {
-        setRegistering(false);
-        setRegisterSuccess(true);
-      },
-      onError: (err) => {
-        setRegistering(false);
-        setError(getApiErrorMessage(err));
-      },
-    });
+    setPickerOpen(true);
   };
 
-  const toggleMark = (n: number) => {
-    let latest = marked;
-    setMarked((prev) => {
-      const next = new Set(prev);
-      if (next.has(n)) next.delete(n);
-      else next.add(n);
-      latest = next;
-      return next;
+  const toggleMark = (cardId: number, n: number) => {
+    let latest: Set<number>;
+    setMarkedByCard((prev) => {
+      const nextSet = new Set(prev[cardId] ?? []);
+      if (nextSet.has(n)) nextSet.delete(n);
+      else nextSet.add(n);
+      latest = nextSet;
+      return { ...prev, [cardId]: nextSet };
     });
-    if (marksSaveTimer.current) clearTimeout(marksSaveTimer.current);
-    marksSaveTimer.current = setTimeout(() => {
+    if (marksSaveTimer.current[cardId]) clearTimeout(marksSaveTimer.current[cardId]);
+    marksSaveTimer.current[cardId] = setTimeout(() => {
+      if (!latest) return;
       saveMarks(
-        { id: gameId, markedNumbers: [...latest], autoMark },
+        { id: gameId, cardId, markedNumbers: [...latest], autoMark },
         {
           onError: (err) => {
             setError(getApiErrorMessage(err));
-            setMarked(new Set(gameState?.markedNumbers ?? []));
+            setMarkedByCard((prev) => {
+              const pc = playerCards?.find((c) => c.cardId === cardId);
+              if (pc?.markedNumbers) {
+                const restored: Record<number, Set<number>> = { ...prev, [cardId]: new Set(pc.markedNumbers) };
+                return restored;
+              }
+              return prev;
+            });
           },
         }
       );
@@ -185,43 +184,48 @@ export default function PlayerGamePage({ params }: { params: Promise<{ id: strin
   const toggleAutoMark = () => {
     const next = !autoMark;
     setAutoMark(next);
+    const cards = gameState?.playerCards ?? [];
     if (!next) {
-      // Port the card's current auto-marked state into manual daubs, so the player
-      // continues from the same card instead of starting from an empty one.
-      const ported = new Set<number>();
-      if (playerCard) {
-        for (const row of playerCard) {
+      // Port each card's current auto-marked state into manual daubs, so the player
+      // continues from the same cards instead of starting from empty ones.
+      for (const pc of cards) {
+        const ported = new Set<number>();
+        for (const row of pc.numbers) {
           for (const num of row) {
             if (calledSet.has(num)) ported.add(num);
           }
         }
+        ported.add(0); // free centre counts as daubed
+        setMarkedByCard((prev) => ({ ...prev, [pc.cardId]: ported }));
+        saveMarks({ id: gameId, cardId: pc.cardId, markedNumbers: [...ported], autoMark: next }, {
+          onError: (err) => {
+            setError(getApiErrorMessage(err));
+            setMarkedByCard((prev) => {
+              const cleared: Record<number, Set<number>> = { ...prev, [pc.cardId]: new Set() };
+              return cleared;
+            });
+          },
+        });
       }
-      ported.add(0); // free centre counts as daubed
-      setMarked(ported);
-      saveMarks({ id: gameId, markedNumbers: [...ported], autoMark: next }, {
-        onError: (err) => {
-          setError(getApiErrorMessage(err));
-          setMarked(new Set());
-        },
-      });
     } else {
-      saveMarks({ id: gameId, markedNumbers: [], autoMark: next }, {
-        onError: (err) => setError(getApiErrorMessage(err)),
-      });
+      for (const pc of cards) {
+        saveMarks({ id: gameId, cardId: pc.cardId, markedNumbers: [], autoMark: next }, {
+          onError: (err) => setError(getApiErrorMessage(err)),
+        });
+      }
     }
   };
 
-  const handleClaim = () => {
+  const handleClaim = (cardId: number) => {
     setError(null);
-    const marks = !autoMark ? [...marked] : undefined;
-    claimBingo({ id: gameId, markedNumbers: marks, autoMark }, {
+    const marks = !autoMark ? [...(markedByCard[cardId] ?? new Set<number>())] : undefined;
+    claimBingo({ id: gameId, cardId, markedNumbers: marks, autoMark }, {
       onSuccess: (res) => {
         if (res.data.banned) {
-          setClaimMessage('Invalid Bingo claim — you have been banned from this game.');
+          setClaimMessage(`Invalid Bingo claim on card #${cardId} — this card was banned.`);
           setClaimType('banned');
-          setClaimBanned(true);
         } else if (res.data.pendingReview) {
-          setClaimMessage('Bingo claimed! Waiting for admin review.');
+          setClaimMessage(`Bingo claimed with card #${cardId}! Waiting for admin review.`);
           setClaimType('pending');
         } else if (res.data.valid) {
           setClaimMessage(`Bingo! You won ${res.data.rewardAmount} coins.`);
@@ -308,7 +312,7 @@ export default function PlayerGamePage({ params }: { params: Promise<{ id: strin
             {countdown ?? 0}
           </p>
           <p className="mt-1 text-sm text-bp-muted">
-            {hasCard ? 'Game starting — good luck!' : 'Starting — registration is closed.'}
+            {hasAnyCard ? 'Game starting — good luck!' : 'Starting — registration is closed.'}
           </p>
         </div>
       )}
@@ -357,7 +361,7 @@ export default function PlayerGamePage({ params }: { params: Promise<{ id: strin
         </div>
       )}
 
-      {registerSuccess && hasCard && (
+      {registerSuccess && hasAnyCard && (
         <div className="mt-3 rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-300 flex items-center gap-2">
           <span className="text-lg">✓</span>
           Registered! Your card is ready. Good luck!
@@ -477,40 +481,93 @@ export default function PlayerGamePage({ params }: { params: Promise<{ id: strin
         </div>
       )}
 
-      {bannedState && (
-        <div className="mt-3 rounded-xl border border-bp-danger/50 bg-gradient-to-br from-bp-danger/20 to-bp-danger/10 px-4 py-4 text-center">
-          <p className="text-base font-bold text-red-300">You have been banned from this game</p>
-          <p className="mt-1 text-sm text-bp-muted">Invalid Bingo claim detected. You can still watch the game.</p>
-        </div>
-      )}
-
       <div className="mt-4">
-        {gameStatus === GameStatus.REGISTRATION_OPEN && !hasCard && (
+        {gameStatus === GameStatus.REGISTRATION_OPEN && !hasAnyCard && (
           <Surface className="relative overflow-hidden p-6 text-center before:absolute before:inset-0 before:bg-gradient-to-br before:from-bp-primary/5 before:via-transparent before:to-bp-gold/5">
             <div className="relative">
               <p className="text-xs font-bold uppercase tracking-[0.25em] text-bp-muted">Registration Open</p>
               <p className="mt-2 text-3xl font-black text-bp-gold drop-shadow-[0_0_8px_rgba(242,201,76,0.2)]">
                 {game?.entryFee ?? '?'}
               </p>
-              <p className="text-sm text-bp-muted">coins to enter</p>
-              <ActionButton variant="primary" onClick={handleRegister} disabled={registering} className="mt-5 w-full py-3 text-base font-bold tracking-wider">
-                {registering ? '✦ Joining...' : '✦ Join This Game'}
+              <p className="text-sm text-bp-muted">coins to enter (per card)</p>
+              <ActionButton variant="primary" onClick={handleRegister} className="mt-5 w-full py-3 text-base font-bold tracking-wider">
+                ✦ Choose a Card
               </ActionButton>
             </div>
           </Surface>
         )}
 
-        {hasCard && playerCard && (
+        {gameStatus === GameStatus.REGISTRATION_OPEN && hasAnyCard && (
+          <Surface className="relative overflow-hidden p-5 text-center before:absolute before:inset-0 before:bg-gradient-to-br before:from-bp-primary/5 before:via-transparent before:to-bp-gold/5">
+            <div className="relative">
+              <p className="text-[10px] font-bold uppercase tracking-[0.25em] text-bp-muted">
+                You hold {playerCards?.length ?? 0} card{(playerCards?.length ?? 0) === 1 ? '' : 's'} · {game?.entryFee ?? '?'} coins per card
+              </p>
+              <ActionButton variant="primary" onClick={handleRegister} className="mt-4 w-full py-3 text-base font-bold tracking-wider">
+                + Buy Another Card
+              </ActionButton>
+            </div>
+          </Surface>
+        )}
+
+        {hasAnyCard && playerCards && playerCards.length > 0 && (
           <>
             <div className="grid items-start gap-3 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
-              <BingoCard
-                numbers={playerCard}
-                calledNumbers={calledSet}
-                autoMark={!manualDaub}
-                markedNumbers={marked}
-                onToggleMark={manualDaub ? toggleMark : undefined}
-                size="sm"
-              />
+              <div className="space-y-6">
+                {playerCards.map((pc) => {
+                  const cardMarked = markedByCard[pc.cardId] ?? new Set<number>();
+                  const prog = manualDaub ? patternProgress(pc.numbers, cardMarked, gameState?.winningPattern) : null;
+                  const patternDone = !!prog && prog.done === prog.total;
+                  return (
+                    <div key={pc.cardId} className="flex flex-col gap-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="inline-flex items-center rounded-full border border-bp-border bg-bp-bg/60 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-bp-muted">
+                          Card #{pc.cardId}
+                        </span>
+                        <div className="flex items-center gap-1.5">
+                          {pc.winner && (
+                            <span className="inline-flex items-center gap-1 rounded-full border border-bp-success/40 bg-bp-success/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-emerald-300">
+                              Winner
+                            </span>
+                          )}
+                          {pc.banned && (
+                            <span className="inline-flex items-center gap-1 rounded-full border border-bp-danger/50 bg-bp-danger/15 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-red-300">
+                              Banned
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <BingoCard
+                        numbers={pc.numbers}
+                        calledNumbers={calledSet}
+                        autoMark={!manualDaub}
+                        markedNumbers={cardMarked}
+                        onToggleMark={manualDaub && !pc.banned ? (n) => toggleMark(pc.cardId, n) : undefined}
+                        size="sm"
+                      />
+                      {pc.banned && (
+                        <p className="text-center text-[11px] text-red-300/80">
+                          This card is banned. Your other cards are still in play.
+                        </p>
+                      )}
+                      {manualDaub && prog && (
+                        <p className={`text-center text-[11px] font-bold ${patternDone ? 'text-emerald-300' : 'text-bp-muted'}`}>
+                          {patternDone ? '✓ Pattern complete — hit BINGO!' : `Pattern ${prog.done}/${prog.total} daubed`}
+                        </p>
+                      )}
+                      {isLive && !pc.banned && !pc.winner && (
+                        <button
+                          onClick={() => handleClaim(pc.cardId)}
+                          disabled={isClaiming}
+                          className="bp-bingo-gradient w-full rounded-xl py-3 text-base font-black tracking-[0.15em] text-white shadow transition hover:scale-[1.02] active:scale-[0.98] disabled:opacity-60"
+                        >
+                          {isClaiming ? '✦ CHECKING...' : `✦ BINGO! ✦`}
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
               <div className={!autoMark ? 'lg:mt-7' : ''}>
                 <NumberBoard calledNumbers={calledSet} compact />
               </div>
@@ -540,43 +597,23 @@ export default function PlayerGamePage({ params }: { params: Promise<{ id: strin
                 Sound
               </label>
             </div>
-            {!autoMark && (
+            {manualDaub && (
               <p className="mt-2 text-center text-xs text-bp-muted">
                 Tap the numbers on your card.
               </p>
             )}
-            {isLive && <div className="h-40" />}
+            {isLive && <div className="h-16" />}
           </>
         )}
       </div>
 
-      {isLive && hasCard && !bannedState && manualDaub && (() => {
-        const prog = patternProgress(playerCard ?? [], marked, gameState?.winningPattern);
-        return prog ? (
-          <div className="fixed inset-x-0 bottom-[8.5rem] z-20 mx-auto max-w-lg px-4">
-            <div className={`rounded-xl border px-3 py-2 text-center text-xs font-bold tracking-wide ${
-              prog.done === prog.total
-                ? 'border-bp-success/50 bg-bp-success/15 text-emerald-300'
-                : 'border-bp-border bg-bp-surface-elevated/90 text-bp-muted'
-            }`}>
-              {prog.done === prog.total
-                ? '✓ Pattern complete — hit BINGO!'
-                : `Pattern ${prog.done}/${prog.total} daubed`}
-            </div>
-          </div>
-        ) : null;
-      })()}
-
-      {isLive && hasCard && !bannedState && (
-        <div className="fixed inset-x-0 bottom-16 z-20 mx-auto max-w-lg px-4">
-          <button
-            onClick={handleClaim}
-            disabled={isClaiming}
-            className="bp-bingo-gradient w-full rounded-2xl py-4 text-lg font-black tracking-[0.15em] text-white shadow-[0_0_32px_rgba(235,87,87,0.5)] transition hover:scale-[1.02] active:scale-[0.98] disabled:opacity-60"
-          >
-            {isClaiming ? '✦ CHECKING...' : '✦ BINGO! ✦'}
-          </button>
-        </div>
+      {pickerOpen && (
+        <CardPickerModal
+          gameId={gameId}
+          entryFee={game?.entryFee ?? 0}
+          onClose={() => setPickerOpen(false)}
+          onRegistered={() => setRegisterSuccess(true)}
+        />
       )}
     </ProtectedRoute>
   );

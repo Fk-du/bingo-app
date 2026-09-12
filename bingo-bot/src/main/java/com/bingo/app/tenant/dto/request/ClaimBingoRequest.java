@@ -12,6 +12,12 @@ import java.util.List;
  */
 @Data
 public class ClaimBingoRequest {
+    /**
+     * Which of the player's cards the claim is for. Required when the player
+     * holds more than one card in the game.
+     */
+    private Long cardId;
+
     private List<Integer> markedNumbers;
     /**
      * The player's own auto-mark preference for this game (null = not changing).

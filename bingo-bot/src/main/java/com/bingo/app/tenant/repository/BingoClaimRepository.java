@@ -29,6 +29,8 @@ public interface BingoClaimRepository extends JpaRepository<BingoClaim, Long> {
 
     boolean existsByGameIdAndPlayerIdAndResult(Long gameId, Long playerId, String result);
 
+    boolean existsByGameIdAndCardIdAndResult(Long gameId, Long cardId, String result);
+
     Optional<BingoClaim> findByGameIdAndPlayerIdAndResult(Long gameId, Long playerId, String result);
 
     @Query("SELECT c FROM BingoClaim c WHERE c.gameId = :gameId AND c.result = :result ORDER BY c.claimedAt ASC")

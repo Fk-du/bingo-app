@@ -2,6 +2,7 @@ export { authApi } from './auth.api';
 export { agentsApi } from './agents.api';
 export { gamesApi } from './games.api';
 export { playersApi, walletApi } from './players.api';
+export { cardsApi } from './cards.api';
 export { coinsApi } from './coins.api';
 export { screenshotsApi } from './screenshots.api';
 export { withdrawalsApi } from './withdrawals.api';

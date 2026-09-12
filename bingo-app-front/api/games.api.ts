@@ -55,18 +55,18 @@ export const gamesApi = {
     const res = await apiClient.get<ApiResponse<GameResponse[]>>('/games/active');
     return res.data;
   },
-  register: async (id: number) => {
-    const res = await apiClient.post<ApiResponse<RegisterResponse>>(`/games/${id}/register`);
+  register: async (id: number, cardId?: number) => {
+    const res = await apiClient.post<ApiResponse<RegisterResponse>>(`/games/${id}/register`, { cardId });
     return res.data;
   },
-  saveMarks: async (id: number, markedNumbers: number[], autoMark?: boolean) => {
-    const res = await apiClient.post<ApiResponse<void>>(`/games/${id}/marks`, { markedNumbers, autoMark });
+  saveMarks: async (id: number, cardId: number | undefined, markedNumbers: number[], autoMark?: boolean) => {
+    const res = await apiClient.post<ApiResponse<void>>(`/games/${id}/marks`, { cardId, markedNumbers, autoMark });
     return res.data;
   },
-  claim: async (id: number, markedNumbers?: number[], autoMark?: boolean) => {
+  claim: async (id: number, cardId: number | undefined, markedNumbers?: number[], autoMark?: boolean) => {
     const res = await apiClient.post<ApiResponse<BingoClaimResultResponse>>(
       `/games/${id}/claim`,
-      markedNumbers || autoMark !== undefined ? { markedNumbers, autoMark } : undefined
+      markedNumbers || autoMark !== undefined || cardId !== undefined ? { cardId, markedNumbers, autoMark } : undefined
     );
     return res.data;
   },

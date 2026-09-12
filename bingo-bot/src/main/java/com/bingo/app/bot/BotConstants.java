@@ -17,6 +17,9 @@ public static final String BTN_CHECK_BALANCE = "\uD83D\uDCB0 Check Balance";
     // Super Admin Actions
     public static final String CREATE_ADMIN = "CREATE_ADMIN";
 
+    // Account verification (request_contact button, not part of BUTTON_ACTIONS)
+    public static final String BTN_SHARE_PHONE = "\uD83D\uDCF1 Share Phone Number";
+
     // Player Actions
     public static final String CHECK_BALANCE = "CHECK_BALANCE";
     public static final String ACTIVE_GAME = "ACTIVE_GAME";

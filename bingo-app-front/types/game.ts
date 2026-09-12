@@ -66,6 +66,15 @@ export interface FairnessProof {
   totalNumbersCalled: number;
 }
 
+export interface PlayerCardView {
+  cardId: number;
+  numbers: number[][];
+  winner: boolean;
+  banned: boolean;
+  markedNumbers?: number[] | null;
+  autoMark?: boolean | null;
+}
+
 export interface GameStateResponse {
   gameId: number;
   status: GameStatus;
@@ -74,17 +83,15 @@ export interface GameStateResponse {
   customPatternCells?: string | null;
   autoMark: boolean;
   commissionPercent?: number | null;
-  markedNumbers?: number[] | null;
   fairnessHash?: string | null;
   currentCallIndex: number;
   totalNumbersCalled: number;
   calledNumbers: number[];
   calledNumbersLabeled?: string[];
   prizePool: number;
-  playerCard: number[][] | null;
+  playerCards: PlayerCardView[] | null;
   hasPlayerCard: boolean;
   isWinner: boolean;
-  isBanned: boolean;
   startTime?: string | null;
 }
 
@@ -92,6 +99,7 @@ export interface PendingClaimCard {
   claimId: number;
   playerId: number;
   playerName: string;
+  cardId?: number | null;
   cardNumbers: number[][];
   calledNumbers: number[];
   claimedAt?: string | null;

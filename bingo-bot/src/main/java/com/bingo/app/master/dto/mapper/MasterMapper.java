@@ -12,10 +12,12 @@ public class MasterMapper {
         return UserProfileResponse.builder()
                 .id(user.getId())
                 .telegramId(user.getTelegramId())
-                .username(user.getUsername())
+                .username(user.getTelegramUsername())
                 .firstName(user.getFirstName())
                 .lastName(user.getLastName())
+                .phoneNumber(user.getPhoneNumber())
                 .role(user.getRole().name())
+                .verified(UserProfileResponse.isVerified(user))
                 .adminUserId(user.getAdminUserId())
                 .businessName(user.getBusinessName())
                 .adminApproved(user.isAdminApproved())
@@ -33,9 +35,10 @@ public class MasterMapper {
                 .approved(user.isAdminApproved())
                 .businessName(user.getBusinessName())
                 .telegramId(user.getTelegramId())
-                .username(user.getUsername())
+                .username(user.getTelegramUsername())
                 .firstName(user.getFirstName())
                 .lastName(user.getLastName())
+                .phoneNumber(user.getPhoneNumber())
                 .balance(user.getBalance())
                 .frozenBalance(user.getFrozenBalance())
                 .active(user.isActive())
@@ -54,6 +57,21 @@ public class MasterMapper {
                 .approvedAt(request.getApprovedAt())
                 .rejectionReason(request.getRejectionReason())
                 .createdAt(request.getCreatedAt())
+                .build();
+    }
+
+    public OwnerFeeSettlementResponse toDto(OwnerFeeSettlement settlement) {
+        if (settlement == null) return null;
+        return OwnerFeeSettlementResponse.builder()
+                .id(settlement.getId())
+                .adminUserId(settlement.getAdminUserId())
+                .amount(settlement.getAmount())
+                .screenshotUrl(settlement.getScreenshotUrl())
+                .status(settlement.getStatus())
+                .approvedBy(settlement.getApprovedBy())
+                .approvedAt(settlement.getApprovedAt())
+                .rejectionReason(settlement.getRejectionReason())
+                .createdAt(settlement.getCreatedAt())
                 .build();
     }
 
@@ -76,6 +94,20 @@ public class MasterMapper {
                 .adminUserId(registry.getAdminUserId())
                 .databaseName(registry.getDatabaseName())
                 .createdAt(registry.getCreatedAt())
+                .build();
+    }
+
+    public CardRequestResponse toDto(CardRequest request) {
+        if (request == null) return null;
+        return CardRequestResponse.builder()
+                .id(request.getId())
+                .adminUserId(request.getAdminUserId())
+                .quantity(request.getQuantity())
+                .status(request.getStatus())
+                .approvedBy(request.getApprovedBy())
+                .approvedAt(request.getApprovedAt())
+                .rejectionReason(request.getRejectionReason())
+                .createdAt(request.getCreatedAt())
                 .build();
     }
 }

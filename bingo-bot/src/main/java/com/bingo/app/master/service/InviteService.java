@@ -1,6 +1,5 @@
 package com.bingo.app.master.service;
 
-import com.bingo.app.infrastructure.persistence.TenantContext;
 import com.bingo.app.infrastructure.persistence.TenantManagementService;
 import com.bingo.app.master.dto.mapper.MasterMapper;
 import com.bingo.app.master.dto.request.CreateAdminRequest;
@@ -12,7 +11,6 @@ import com.bingo.app.master.entity.User;
 import com.bingo.app.master.enums.Role;
 import com.bingo.app.master.repository.InviteCodeRepository;
 import com.bingo.app.master.repository.UserRepository;
-import com.bingo.app.tenant.service.CardService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -31,7 +29,6 @@ public class InviteService {
     private final UserRepository userRepository;
     private final UserService userService;
     private final TenantManagementService tenantManagementService;
-    private final CardService cardService;
     private final MasterMapper masterMapper;
     private final NotificationService notificationService;
 
@@ -149,17 +146,6 @@ public class InviteService {
                     lastName,
                     adminUserId
             ));
-
-            String tenant = TenantContext.tenantKeyForAdmin(adminUserId);
-            TenantContext.setTenant(tenant);
-            try {
-                cardService.assignNewCardToPlayer(newUser.getId());
-                log.info("Default card assigned to new player: {}", newUser.getId());
-            } catch (Exception e) {
-                log.warn("Failed to assign default card to player {}: {}", newUser.getId(), e.getMessage());
-            } finally {
-                TenantContext.clear();
-            }
 
             log.info("New player registered: id={}, telegramId={}, adminUserId={}",
                     newUser.getId(), telegramId, adminUserId);

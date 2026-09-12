@@ -189,8 +189,10 @@ public class GameController {
     @PreAuthorize("hasRole('PLAYER')")
     public ApiResponse<RegisterResponse> register(
             @AuthenticationPrincipal UserPrincipal principal,
-            @PathVariable Long id) {
-        var gameCard = cardService.assignCard(id, principal.getUser().getId());
+            @PathVariable Long id,
+            @RequestBody(required = false) com.bingo.app.tenant.dto.request.RegisterRequest request) {
+        var gameCard = cardService.assignCard(id, principal.getUser().getId(),
+                request == null ? null : request.cardId());
         return ApiResponse.ok("Registered for game", RegisterResponse.builder()
                 .gameId(id)
                 .cardId(gameCard.card().id())
@@ -204,6 +206,7 @@ public class GameController {
             @PathVariable Long id,
             @RequestBody(required = false) ClaimBingoRequest request) throws JsonProcessingException {
         var result = gameEngineService.claimBingo(id, principal.getUser().getId(),
+                request == null ? null : request.getCardId(),
                 request == null ? null : request.getMarkedNumbers(),
                 request == null ? null : request.getAutoMark());
         String message;
@@ -253,7 +256,8 @@ public class GameController {
             @AuthenticationPrincipal UserPrincipal principal,
             @PathVariable Long id,
             @RequestBody ClaimBingoRequest request) {
-        gameEngineService.saveMarks(id, principal.getUser().getId(), request.getMarkedNumbers(), request.getAutoMark());
+        gameEngineService.saveMarks(id, principal.getUser().getId(),
+                request.getCardId(), request.getMarkedNumbers(), request.getAutoMark());
         return ApiResponse.ok("Marks saved", null);
     }
 

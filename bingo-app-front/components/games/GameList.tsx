@@ -216,7 +216,7 @@ function PlayerGameCard({
             </span>
             <span className="inline-flex items-center gap-1">
               <span className="text-bp-muted">●</span>
-              Up to {game.maxPlayers} players
+              Entries {game.registeredPlayers ?? 0}/{game.maxPlayers}
             </span>
             {!isLive && (
               <span className="inline-flex items-center gap-1">
