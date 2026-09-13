@@ -166,3 +166,23 @@ export interface GameCardResponse {
   winner: boolean;
   createdAt: string;
 }
+
+export interface PlayerCardHistoryCard {
+  cardId: number;
+  winner: boolean;
+  banned: boolean;
+  registeredAt: string;
+  claimResult: 'VALID' | 'REJECTED' | null;
+  claimedAt: string | null;
+  validatedAt: string | null;
+  rejectionReason: string | null;
+}
+
+export interface PlayerCardHistory {
+  game: GameResponse;
+  cards: PlayerCardHistoryCard[];
+  bet: number;
+  win: number;
+  refund: number;
+  net: number;
+}

@@ -231,3 +231,13 @@ export function usePlayerGameHistory() {
     },
   });
 }
+
+export function usePlayerCardHistory() {
+  return useQuery({
+    queryKey: ['games', 'player-card-history'],
+    queryFn: async () => {
+      const res = await gamesApi.getPlayerCardHistory();
+      return res.data;
+    },
+  });
+}

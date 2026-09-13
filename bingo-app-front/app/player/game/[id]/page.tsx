@@ -65,7 +65,7 @@ export default function PlayerGamePage({ params }: { params: Promise<{ id: strin
   const [error, setError] = useState<string | null>(null);
   const [registerSuccess, setRegisterSuccess] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
-  const [markedByCard, setMarkedByCard] = useState<Record<number, Set<number>>>({});
+  const [markedNumbers, setMarkedNumbers] = useState<Set<number>>(new Set());
   const [autoMark, setAutoMark] = useState<boolean>(true);
   const autoMarkInitialized = useRef(false);
   const manualMarksSeeded = useRef(false);
@@ -87,7 +87,7 @@ export default function PlayerGamePage({ params }: { params: Promise<{ id: strin
       Promise.resolve().then(() => setClaimsDismissed(false));
     }
   }, [pendingClaimCards]);
-  const marksSaveTimer = useRef<{ [cardId: number]: ReturnType<typeof setTimeout> | null }>({});
+  const marksSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Restore the player's auto-mark preference and persisted daubs after refresh/reconnect.
   useEffect(() => {
@@ -99,11 +99,11 @@ export default function PlayerGamePage({ params }: { params: Promise<{ id: strin
       }
       if (gameState.autoMark === false && !manualMarksSeeded.current && gameState.playerCards) {
         manualMarksSeeded.current = true;
-        const seed: Record<number, Set<number>> = {};
+        const seed = new Set<number>();
         for (const pc of gameState.playerCards) {
-          if (pc.markedNumbers?.length) seed[pc.cardId] = new Set(pc.markedNumbers);
+          for (const n of pc.markedNumbers ?? []) seed.add(n);
         }
-        if (Object.keys(seed).length > 0) setMarkedByCard((prev) => ({ ...prev, ...seed }));
+        if (seed.size > 0) setMarkedNumbers(seed);
       }
     });
   }, [gameState]);
@@ -150,34 +150,25 @@ export default function PlayerGamePage({ params }: { params: Promise<{ id: strin
     setPickerOpen(true);
   };
 
-  const toggleMark = (cardId: number, n: number) => {
+  const toggleMark = (n: number) => {
     let latest: Set<number>;
-    setMarkedByCard((prev) => {
-      const nextSet = new Set(prev[cardId] ?? []);
+    setMarkedNumbers((prev) => {
+      const nextSet = new Set(prev);
       if (nextSet.has(n)) nextSet.delete(n);
       else nextSet.add(n);
       latest = nextSet;
-      return { ...prev, [cardId]: nextSet };
+      return nextSet;
     });
-    if (marksSaveTimer.current[cardId]) clearTimeout(marksSaveTimer.current[cardId]);
-    marksSaveTimer.current[cardId] = setTimeout(() => {
+    if (marksSaveTimer.current) clearTimeout(marksSaveTimer.current);
+    marksSaveTimer.current = setTimeout(() => {
       if (!latest) return;
-      saveMarks(
-        { id: gameId, cardId, markedNumbers: [...latest], autoMark },
-        {
-          onError: (err) => {
-            setError(getApiErrorMessage(err));
-            setMarkedByCard((prev) => {
-              const pc = playerCards?.find((c) => c.cardId === cardId);
-              if (pc?.markedNumbers) {
-                const restored: Record<number, Set<number>> = { ...prev, [cardId]: new Set(pc.markedNumbers) };
-                return restored;
-              }
-              return prev;
-            });
-          },
-        }
-      );
+      const payload = [...latest];
+      for (const pc of playerCards ?? []) {
+        saveMarks(
+          { id: gameId, cardId: pc.cardId, markedNumbers: payload, autoMark },
+          { onError: (err) => setError(getApiErrorMessage(err)) }
+        );
+      }
     }, 250);
   };
 
@@ -186,28 +177,25 @@ export default function PlayerGamePage({ params }: { params: Promise<{ id: strin
     setAutoMark(next);
     const cards = gameState?.playerCards ?? [];
     if (!next) {
-      // Port each card's current auto-marked state into manual daubs, so the player
-      // continues from the same cards instead of starting from empty ones.
+      // Port the current auto-marked state into a single shared daub set, so the
+      // player continues from the same numbers instead of starting from empty ones.
+      const ported = new Set<number>();
       for (const pc of cards) {
-        const ported = new Set<number>();
         for (const row of pc.numbers) {
           for (const num of row) {
             if (calledSet.has(num)) ported.add(num);
           }
         }
-        ported.add(0); // free centre counts as daubed
-        setMarkedByCard((prev) => ({ ...prev, [pc.cardId]: ported }));
+      }
+      ported.add(0); // free centre counts as daubed
+      setMarkedNumbers(ported);
+      for (const pc of cards) {
         saveMarks({ id: gameId, cardId: pc.cardId, markedNumbers: [...ported], autoMark: next }, {
-          onError: (err) => {
-            setError(getApiErrorMessage(err));
-            setMarkedByCard((prev) => {
-              const cleared: Record<number, Set<number>> = { ...prev, [pc.cardId]: new Set() };
-              return cleared;
-            });
-          },
+          onError: (err) => setError(getApiErrorMessage(err)),
         });
       }
     } else {
+      setMarkedNumbers(new Set());
       for (const pc of cards) {
         saveMarks({ id: gameId, cardId: pc.cardId, markedNumbers: [], autoMark: next }, {
           onError: (err) => setError(getApiErrorMessage(err)),
@@ -218,7 +206,7 @@ export default function PlayerGamePage({ params }: { params: Promise<{ id: strin
 
   const handleClaim = (cardId: number) => {
     setError(null);
-    const marks = !autoMark ? [...(markedByCard[cardId] ?? new Set<number>())] : undefined;
+    const marks = !autoMark ? [...markedNumbers] : undefined;
     claimBingo({ id: gameId, cardId, markedNumbers: marks, autoMark }, {
       onSuccess: (res) => {
         if (res.data.banned) {
@@ -515,7 +503,7 @@ export default function PlayerGamePage({ params }: { params: Promise<{ id: strin
             <div className="grid items-start gap-3 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
               <div className="space-y-6">
                 {playerCards.map((pc) => {
-                  const cardMarked = markedByCard[pc.cardId] ?? new Set<number>();
+                  const cardMarked = markedNumbers;
                   const prog = manualDaub ? patternProgress(pc.numbers, cardMarked, gameState?.winningPattern) : null;
                   const patternDone = !!prog && prog.done === prog.total;
                   return (
@@ -542,7 +530,7 @@ export default function PlayerGamePage({ params }: { params: Promise<{ id: strin
                         calledNumbers={calledSet}
                         autoMark={!manualDaub}
                         markedNumbers={cardMarked}
-                        onToggleMark={manualDaub && !pc.banned ? (n) => toggleMark(pc.cardId, n) : undefined}
+                        onToggleMark={manualDaub && !pc.banned ? (n) => toggleMark(n) : undefined}
                         size="sm"
                       />
                       {pc.banned && (
@@ -599,7 +587,7 @@ export default function PlayerGamePage({ params }: { params: Promise<{ id: strin
             </div>
             {manualDaub && (
               <p className="mt-2 text-center text-xs text-bp-muted">
-                Tap the numbers on your card.
+                Tap a number once — it marks on all your cards that contain it.
               </p>
             )}
             {isLive && <div className="h-16" />}

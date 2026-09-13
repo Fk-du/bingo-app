@@ -3,6 +3,7 @@ package com.bingo.app.tenant.service;
 import com.bingo.app.tenant.dto.CreateGameRequest;
 import com.bingo.app.tenant.dto.mapper.TenantMapper;
 import com.bingo.app.tenant.dto.response.GameResponse;
+import com.bingo.app.tenant.dto.response.PlayerCardHistoryResponse;
 import com.bingo.app.tenant.repository.BingoClaimRepository;
 import com.bingo.app.tenant.entity.BingoClaim;
 import com.bingo.app.tenant.entity.CalledNumber;
@@ -25,7 +26,11 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.security.SecureRandom;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.Optional;
 import java.util.stream.Collectors;
@@ -265,6 +270,99 @@ public class GameService {
                 .map(Optional::get)
                 .map(tenantMapper::toDto)
                 .toList();
+    }
+
+    /**
+     * Per-card history for a player, grouped by game, with money from the
+     * transaction ledger (BET / WIN / REFUND are all recorded per game).
+     */
+    @Transactional(transactionManager = "tenantTransactionManager", readOnly = true)
+    public List<PlayerCardHistoryResponse> getPlayerCardHistory(Long playerId) {
+        List<GameCard> myCards = gameCardRepository.findByPlayerIdOrderByCreatedAtDesc(playerId);
+        if (myCards.isEmpty()) {
+            return List.of();
+        }
+
+        Map<Long, Game> gamesById = myCards.stream()
+                .map(GameCard::getGameId)
+                .distinct()
+                .map(gameRepository::findById)
+                .filter(Optional::isPresent)
+                .map(Optional::get)
+                .collect(Collectors.toMap(Game::getId, g -> g));
+
+        Map<String, BingoClaim> claimsByCardKey = bingoClaimRepository.findByPlayerId(playerId).stream()
+                .collect(Collectors.toMap(
+                        c -> cardKey(c.getGameId(), c.getCardId()),
+                        c -> c,
+                        (a, b) -> a));
+
+        Map<Long, BigDecimal[]> moneyByGame = new HashMap<>();
+        for (Transaction t : transactionRepository.findByUserIdOrderByCreatedAtDesc(playerId)) {
+            if (t.getReferenceId() == null) {
+                continue;
+            }
+            try {
+                switch (TransactionType.valueOf(t.getType())) {
+                    case BET -> moneyByGame.computeIfAbsent(t.getReferenceId(), k -> new BigDecimal[3])[0] =
+                            add(moneyByGame.get(t.getReferenceId())[0], t.getAmount());
+                    case WIN -> moneyByGame.computeIfAbsent(t.getReferenceId(), k -> new BigDecimal[3])[1] =
+                            add(moneyByGame.get(t.getReferenceId())[1], t.getAmount());
+                    case REFUND -> moneyByGame.computeIfAbsent(t.getReferenceId(), k -> new BigDecimal[3])[2] =
+                            add(moneyByGame.get(t.getReferenceId())[2], t.getAmount());
+                    default -> {
+                    }
+                }
+            } catch (IllegalArgumentException ignored) {
+                // Not a ledger type we track per game (TOP_UP, WITHDRAWAL, ...).
+            }
+        }
+
+        Map<Long, List<PlayerCardHistoryResponse.Card>> cardsByGame = new LinkedHashMap<>();
+        for (GameCard gc : myCards) {
+            Long cardId = gc.getCard().getId();
+            BingoClaim claim = claimsByCardKey.get(cardKey(gc.getGameId(), cardId));
+            cardsByGame.computeIfAbsent(gc.getGameId(), k -> new ArrayList<>()).add(
+                    PlayerCardHistoryResponse.Card.builder()
+                            .cardId(cardId)
+                            .winner(gc.isWinner())
+                            .banned(gc.isBanned())
+                            .registeredAt(gc.getCreatedAt())
+                            .claimResult(claim != null ? claim.getResult() : null)
+                            .claimedAt(claim != null ? claim.getClaimedAt() : null)
+                            .validatedAt(claim != null ? claim.getValidatedAt() : null)
+                            .rejectionReason(claim != null ? claim.getRejectionReason() : null)
+                            .build());
+        }
+
+        List<PlayerCardHistoryResponse> result = new ArrayList<>();
+        cardsByGame.forEach((gameId, cards) -> {
+            BigDecimal[] m = moneyByGame.get(gameId);
+            BigDecimal bet = m != null && m[0] != null ? m[0] : BigDecimal.ZERO;
+            BigDecimal win = m != null && m[1] != null ? m[1] : BigDecimal.ZERO;
+            BigDecimal refund = m != null && m[2] != null ? m[2] : BigDecimal.ZERO;
+            Game game = gamesById.get(gameId);
+            result.add(PlayerCardHistoryResponse.builder()
+                    .game(tenantMapper.toDto(game))
+                    .cards(cards)
+                    .bet(bet)
+                    .win(win)
+                    .refund(refund)
+                    .net(win.add(refund).subtract(bet))
+                    .build());
+        });
+        return result;
+    }
+
+    private static String cardKey(Long gameId, Long cardId) {
+        return gameId + ":" + cardId;
+    }
+
+    private static BigDecimal add(BigDecimal current, BigDecimal amount) {
+        if (amount == null) {
+            return current != null ? current : BigDecimal.ZERO;
+        }
+        return (current != null ? current : BigDecimal.ZERO).add(amount);
     }
 
     @Transactional(transactionManager = "tenantTransactionManager", readOnly = true)

@@ -13,6 +13,7 @@ import com.bingo.app.tenant.dto.response.BingoClaimResultResponse;
 import com.bingo.app.tenant.dto.response.GameResponse;
 import com.bingo.app.tenant.dto.response.GameStateResponse;
 import com.bingo.app.tenant.dto.response.PendingClaimCardResponse;
+import com.bingo.app.tenant.dto.response.PlayerCardHistoryResponse;
 import com.bingo.app.tenant.dto.response.RegisterResponse;
 import com.bingo.app.master.enums.Role;
 import com.bingo.app.tenant.service.CardService;
@@ -306,5 +307,11 @@ public class GameController {
     @PreAuthorize("hasRole('PLAYER')")
     public ApiResponse<List<GameResponse>> playerGameHistory(@AuthenticationPrincipal UserPrincipal principal) {
         return ApiResponse.ok(gameService.getGamesForPlayer(principal.getUser().getId()));
+    }
+
+    @GetMapping("/player/history/cards")
+    @PreAuthorize("hasRole('PLAYER')")
+    public ApiResponse<List<PlayerCardHistoryResponse>> playerCardHistory(@AuthenticationPrincipal UserPrincipal principal) {
+        return ApiResponse.ok(gameService.getPlayerCardHistory(principal.getUser().getId()));
     }
 }

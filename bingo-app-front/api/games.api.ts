@@ -12,6 +12,7 @@ import {
   GameSettingsUpdateRequest,
   CalledNumberResponse,
   FairnessProof,
+  PlayerCardHistory,
 } from '@/types';
 
 export const gamesApi = {
@@ -116,6 +117,10 @@ export const gamesApi = {
   },
   getPlayerHistory: async () => {
     const res = await apiClient.get<ApiResponse<GameResponse[]>>('/games/player/history');
+    return res.data;
+  },
+  getPlayerCardHistory: async () => {
+    const res = await apiClient.get<ApiResponse<PlayerCardHistory[]>>('/games/player/history/cards');
     return res.data;
   },
 };
