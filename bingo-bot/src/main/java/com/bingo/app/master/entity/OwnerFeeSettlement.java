@@ -8,8 +8,7 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 /**
- * Admin's cash settlement of accrued owner (platform) fees. Mirrors
- * {@link AdminFundRequest} but in the opposite direction: the admin pays the owner
+ * Admin's cash settlement of accrued owner (platform) fees: the admin pays the owner
  * in cash and attaches a screenshot as proof, which the super admin reviews.
  */
 @Entity

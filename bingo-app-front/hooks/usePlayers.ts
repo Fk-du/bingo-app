@@ -34,16 +34,6 @@ export function useFundPlayer() {
   });
 }
 
-export function useAdminWallet() {
-  return useQuery({
-    queryKey: ['wallet', 'admin'],
-    queryFn: async () => {
-      const res = await walletApi.get();
-      return res.data;
-    },
-  });
-}
-
 export function useWallet() {
   return useQuery({
     queryKey: ['wallet'],

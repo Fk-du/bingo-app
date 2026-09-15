@@ -4,9 +4,7 @@ import com.bingo.app.infrastructure.security.UserPrincipal;
 import com.bingo.app.master.dto.mapper.MasterMapper;
 import com.bingo.app.master.dto.request.AdminStatusRequest;
 import com.bingo.app.master.dto.request.AdminWarningRequest;
-import com.bingo.app.master.dto.request.CreateAdminFundRequest;
 import com.bingo.app.master.dto.request.CreateOwnerFeeSettlementRequest;
-import com.bingo.app.master.dto.response.AdminFundRequestResponse;
 import com.bingo.app.master.dto.response.AdminListItem;
 import com.bingo.app.master.dto.response.AdminWarningResponse;
 import com.bingo.app.master.dto.response.AdminOwnerFeeSummaryResponse;
@@ -98,47 +96,6 @@ public class AdminController {
         return new AdminWarningResponse(
                 w.getId(), w.getAdminUserId(), w.getReason(),
                 w.getCreatedBy(), w.getCreatedAt() != null ? w.getCreatedAt() : LocalDateTime.now());
-    }
-
-    @PostMapping("/fund-requests")
-    @PreAuthorize("hasRole('ADMIN')")
-    public ApiResponse<AdminFundRequestResponse> createFundRequest(
-            @AuthenticationPrincipal UserPrincipal principal,
-            @Valid @RequestBody CreateAdminFundRequest request) {
-        var fundRequest = walletService.requestAdminFund(
-                principal.getUser().getId(), request.amount(), request.screenshotUrl());
-        return ApiResponse.ok("Fund request created", masterMapper.toDto(fundRequest));
-    }
-
-    @GetMapping("/fund-requests")
-    @PreAuthorize("hasAnyRole('ADMIN', 'SUPER_ADMIN')")
-    public ApiResponse<List<AdminFundRequestResponse>> listFundRequests(
-            @AuthenticationPrincipal UserPrincipal principal) {
-        var user = principal.getUser();
-        return switch (user.getRole()) {
-            case SUPER_ADMIN -> ApiResponse.ok(
-                    walletService.getPendingAdminFundRequests().stream()
-                            .map(masterMapper::toDto).toList());
-            case ADMIN -> ApiResponse.ok(
-                    walletService.getAdminFundRequestsByAdmin(user.getId()).stream()
-                            .map(masterMapper::toDto).toList());
-            default -> ApiResponse.ok(List.of());
-        };
-    }
-
-    @PatchMapping("/fund-requests/{id}")
-    @PreAuthorize("hasRole('SUPER_ADMIN')")
-    public ApiResponse<String> handleFundRequest(
-            @PathVariable Long id,
-            @AuthenticationPrincipal UserPrincipal principal,
-            @RequestBody Map<String, String> body) {
-        String action = body.getOrDefault("action", "").toUpperCase();
-        switch (action) {
-            case "APPROVE" -> walletService.approveAdminFundRequest(id, principal.getUser().getId());
-            case "REJECT" -> walletService.rejectAdminFundRequest(id, principal.getUser().getId(), body.get("reason"));
-            default -> throw new IllegalArgumentException("Unknown action: " + action);
-        }
-        return ApiResponse.ok("Fund request " + action.toLowerCase() + "d");
     }
 
     // =========================================================

@@ -3,84 +3,16 @@
 import { useState } from 'react';
 import { ProtectedRoute } from '@/components/common/ProtectedRoute';
 import { Role } from '@/types/enums';
-import { useAgents, useInviteAgent, useUpdateAgentStatus, useFundRequests, useHandleFundRequest, useWarnAgent, useAgentStats, useAgentWarnings } from '@/hooks/useAgents';
-import { useAdminWallet } from '@/hooks/usePlayers';
-import { AgentResponse, AgentFundRequestResponse, AgentStatsResponse, AdminWarningResponse } from '@/types/agent';
-import { PaymentProof } from '@/components/common/PaymentProof';
-import { ActionButton, EmptyState, MetricCard, SectionHeader, SelectField, Surface, StatusPill, TextAreaField, TextField } from '@/components/ui/Surface';
+import { useAgents, useInviteAgent, useUpdateAgentStatus, useWarnAgent, useAgentStats, useAgentWarnings } from '@/hooks/useAgents';
+import { AgentResponse, AgentStatsResponse, AdminWarningResponse } from '@/types/agent';
+import { ActionButton, EmptyState, SectionHeader, SelectField, Surface, StatusPill, TextField } from '@/components/ui/Surface';
 
 const WARN_PRESETS = [
   'Suspicious account activity',
   'Slow / delayed payouts',
-  'Overdue funding request',
   'Complaints from players',
   'Policy violation',
 ] as const;
-
-interface FundReviewDialogProps {
-  requestId: number;
-  amount: number;
-  agentLabel: string;
-  screenshotUrl: string | null;
-  onClose: () => void;
-  onApprove: (id: number) => void;
-  onReject: (id: number, reason?: string) => void;
-}
-
-function FundReviewDialog({ requestId, amount, agentLabel, screenshotUrl, onClose, onApprove, onReject }: FundReviewDialogProps) {
-  const [reason, setReason] = useState('');
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <button
-        type="button"
-        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
-        onClick={onClose}
-        aria-label="Close"
-      />
-      <Surface className="relative w-full max-w-sm p-5">
-        <p className="text-lg font-bold text-bp-text">Review Fund Request</p>
-        <p className="mt-1 text-sm text-bp-muted">
-          {agentLabel} requested <span className="font-semibold text-bp-gold">{amount.toLocaleString()}</span> coins
-        </p>
-
-        <div className="mt-4">
-          <p className="text-xs font-medium uppercase tracking-[0.18em] text-bp-muted">Payment proof</p>
-          {screenshotUrl ? (
-            <div className="mt-2">
-              <PaymentProof url={screenshotUrl} className="h-32 w-full" />
-              <p className="mt-1 text-[11px] text-bp-muted">Tap the image to enlarge</p>
-            </div>
-          ) : (
-            <p className="mt-2 text-sm text-bp-muted">No screenshot attached.</p>
-          )}
-        </div>
-
-        <div className="mt-4">
-          <p className="mb-1 text-xs font-medium uppercase tracking-[0.18em] text-bp-muted">Rejection reason (optional)</p>
-          <TextAreaField
-            value={reason}
-            onChange={(e) => setReason(e.target.value)}
-            placeholder="Only used when rejecting"
-            rows={2}
-          />
-        </div>
-
-        <div className="mt-6 flex gap-2">
-          <ActionButton variant="secondary" onClick={onClose} className="flex-1">
-            Back
-          </ActionButton>
-          <ActionButton variant="danger" onClick={() => { onReject(requestId, reason || undefined); onClose(); }} className="flex-1">
-            Reject
-          </ActionButton>
-          <ActionButton variant="success" onClick={() => { onApprove(requestId); onClose(); }} className="flex-1">
-            Approve
-          </ActionButton>
-        </div>
-      </Surface>
-    </div>
-  );
-}
 
 function WarnDialog({ agentLabel, onClose, onWarn }: {
   agentLabel: string;
@@ -264,25 +196,14 @@ export default function AgentsPage() {
   const { mutate: invite, isPending } = useInviteAgent();
   const { mutate: updateStatus } = useUpdateAgentStatus();
   const { mutate: warn } = useWarnAgent();
-  const { data: fundRequests, isLoading: loadingFunds } = useFundRequests();
-  const { data: adminWallet } = useAdminWallet();
-  const { mutate: handleFund } = useHandleFundRequest();
   const [warnTarget, setWarnTarget] = useState<AgentResponse | null>(null);
   const [suspendTarget, setSuspendTarget] = useState<AgentResponse | null>(null);
   const [statsTarget, setStatsTarget] = useState<number | null>(null);
   const { data: statsData } = useAgentStats(statsTarget);
   const { data: warningsData } = useAgentWarnings(statsTarget);
-  const [reviewTarget, setReviewTarget] = useState<{
-    id: number;
-    amount: number;
-    adminUserId: number;
-    screenshotUrl: string | null;
-  } | null>(null);
 
   const pendingApproval = agents?.filter((a) => !a.approved && a.active) ?? [];
   const approvedAgents = agents?.filter((a) => a.approved) ?? [];
-  const pendingFunds = fundRequests?.filter((r) => r.status === 'PENDING') ?? [];
-  const approvedFunds = fundRequests?.filter((r) => r.status === 'APPROVED') ?? [];
 
   const agentLabel = (adminUserId: number) => {
     const agent = agents?.find((a) => a.adminUserId === adminUserId);
@@ -294,7 +215,7 @@ export default function AgentsPage() {
       <SectionHeader
         eyebrow="Agents"
         title="Agent management"
-        description="Approve new agents and manage their funding requests."
+        description="Approve new agents and manage their status."
         action={
           <ActionButton onClick={() => invite()} disabled={isPending} variant="primary">
             {isPending ? 'Generating...' : 'Invite agent'}
@@ -302,22 +223,7 @@ export default function AgentsPage() {
         }
       />
 
-      <div className="mb-4 grid grid-cols-3 gap-3">
-        <MetricCard
-          label="Your Balance"
-          value={adminWallet?.balance.toLocaleString() ?? '—'}
-          accent="gold"
-        />
-        <MetricCard label="Pending Funds" value={pendingFunds.length} accent="warning" />
-        <MetricCard
-          label="Approved Funds"
-          value={approvedFunds.reduce((s, r) => s + r.amount, 0).toLocaleString()}
-          accent="success"
-        />
-      </div>
-
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
-        <div className="space-y-4">
+      <div className="space-y-4">
           {pendingApproval.length > 0 && (
             <Surface className="p-4">
               <div className="mb-4">
@@ -427,72 +333,6 @@ export default function AgentsPage() {
             ) : null}
           </Surface>
         </div>
-
-        <Surface className="p-4">
-          <div className="mb-4">
-            <p className="text-[11px] uppercase tracking-[0.24em] text-slate-500">Fund requests</p>
-            <h2 className="mt-1 text-lg font-semibold text-slate-100">
-              Pending {pendingFunds.length} &bull; Approved {approvedFunds.length}
-            </h2>
-          </div>
-
-          {loadingFunds ? (
-            <div className="space-y-2">
-              <div className="h-16 animate-pulse rounded-[18px] border border-slate-800 bg-slate-900/60" />
-              <div className="h-16 animate-pulse rounded-[18px] border border-slate-800 bg-slate-900/60" />
-            </div>
-          ) : fundRequests?.length ? (
-            <div className="space-y-2">
-              {fundRequests.map((req: AgentFundRequestResponse) => (
-                <div
-                  key={req.id}
-                  className="flex flex-wrap items-center justify-between gap-3 rounded-[18px] border border-slate-800 bg-slate-900/60 px-4 py-3"
-                >
-                  <div className="flex min-w-0 flex-1 items-center gap-3">
-                    <PaymentProof url={req.screenshotUrl} />
-                    <div className="min-w-0">
-                      <p className="text-sm font-semibold text-slate-100">
-                        {req.amount.toLocaleString()} coins
-                      </p>
-                      <p className="mt-0.5 text-xs text-slate-500">
-                        {agentLabel(req.adminUserId)} &middot; {new Date(req.createdAt).toLocaleDateString()}
-                      </p>
-                      {req.status === 'REJECTED' && req.rejectionReason && (
-                        <p className="mt-1 text-xs font-medium text-red-400">Reason: {req.rejectionReason}</p>
-                      )}
-                      <div className="mt-1">
-                        <StatusPill status={req.status} />
-                      </div>
-                    </div>
-                  </div>
-                  {req.status === 'PENDING' && (
-                    <ActionButton
-                      variant="success"
-                      onClick={() => setReviewTarget({ id: req.id, amount: req.amount, adminUserId: req.adminUserId, screenshotUrl: req.screenshotUrl })}
-                    >
-                      Review
-                    </ActionButton>
-                  )}
-                </div>
-              ))}
-            </div>
-          ) : (
-            <EmptyState title="No fund requests" description="Pending items will appear here." />
-          )}
-        </Surface>
-      </div>
-
-      {reviewTarget && (
-        <FundReviewDialog
-          requestId={reviewTarget.id}
-          amount={reviewTarget.amount}
-          agentLabel={agentLabel(reviewTarget.adminUserId)}
-          screenshotUrl={reviewTarget.screenshotUrl}
-          onClose={() => setReviewTarget(null)}
-          onApprove={(id) => handleFund({ id, action: 'APPROVE' })}
-          onReject={(id, reason) => handleFund({ id, action: 'REJECT', reason })}
-        />
-      )}
 
       {warnTarget && (
         <WarnDialog

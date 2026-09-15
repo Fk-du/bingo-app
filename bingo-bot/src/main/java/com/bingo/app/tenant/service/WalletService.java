@@ -3,12 +3,10 @@ package com.bingo.app.tenant.service;
 import com.bingo.app.infrastructure.persistence.TenantContext;
 import com.bingo.app.tenant.exception.RequestAlreadyProcessedException;
 import com.bingo.app.tenant.exception.WalletException;
-import com.bingo.app.master.entity.AdminFundRequest;
 import com.bingo.app.master.entity.OwnerFeeSettlement;
 import com.bingo.app.master.entity.User;
 import com.bingo.app.master.enums.FundStatus;
 import com.bingo.app.master.enums.Role;
-import com.bingo.app.master.repository.AdminFundRequestRepository;
 import com.bingo.app.master.repository.OwnerFeeSettlementRepository;
 import com.bingo.app.master.repository.UserRepository;
 import com.bingo.app.master.dto.response.OwnerFeeSummaryResponse;
@@ -51,7 +49,6 @@ public class WalletService {
     private final TransactionRepository transactionRepository;
     private final CoinRequestRepository coinRequestRepository;
     private final WithdrawalRepository withdrawalRepository;
-    private final AdminFundRequestRepository adminFundRequestRepository;
     private final OwnerFeeSettlementRepository ownerFeeSettlementRepository;
     private final TenantMapper tenantMapper;
     private final NotificationService notificationService;
@@ -163,10 +160,6 @@ public class WalletService {
             throw new WalletException("Only admins can fund players");
         }
 
-        if (admin.getBalance().compareTo(amount) < 0) {
-            throw new WalletException("Insufficient admin balance");
-        }
-
         Player player = playerRepository.findByUserId(playerId)
                 .orElseThrow(() -> new WalletException("Player not found"));
 
@@ -174,11 +167,9 @@ public class WalletService {
             throw new WalletException("Player does not belong to this admin");
         }
 
-        // Tenant DB credit first; master-side deduction last (no cross-DB transaction).
+        // Admins fund players freely (no credit ceiling); the platform owner is
+        // compensated via the per-game commission accrual, not credit sales.
         playerService.addBalance(playerId, amount);
-
-        admin.setBalance(admin.getBalance().subtract(amount));
-        userRepository.save(admin);
 
         createTransaction(adminUserId, TransactionType.FUND_AGENT_TO_PLAYER, amount,
                 TransactionStatus.COMPLETED, null, "Funded player " + playerId);
@@ -266,35 +257,6 @@ public class WalletService {
     // =========================================================
 
     @Transactional(transactionManager = "tenantTransactionManager")
-    public void fundAdmin(Long superAdminId, Long adminUserId, BigDecimal amount) {
-        User superAdmin = userRepository.findById(superAdminId)
-                .orElseThrow(() -> new WalletException("Super admin not found"));
-
-        if (superAdmin.getRole() != Role.SUPER_ADMIN) {
-            throw new WalletException("Only super admin can fund admins");
-        }
-
-        User admin = userRepository.findById(adminUserId)
-                .orElseThrow(() -> new WalletException("Admin not found"));
-
-        if (admin.getRole() != Role.ADMIN) {
-            throw new WalletException("User is not an admin");
-        }
-
-        admin.setBalance(admin.getBalance().add(amount));
-        userRepository.save(admin);
-
-        createTransaction(superAdminId, TransactionType.FUND_SUPER_ADMIN_TO_AGENT, amount,
-                TransactionStatus.COMPLETED, null, "Funded admin " + adminUserId);
-        createTransaction(adminUserId, TransactionType.DEPOSIT, amount,
-                TransactionStatus.COMPLETED, null, "Received from super admin");
-
-        notifyAdminFunded(adminUserId, amount);
-
-        log.info("Super admin {} funded admin {} with amount {}", superAdminId, adminUserId, amount);
-    }
-
-    @Transactional(transactionManager = "tenantTransactionManager")
     public void approveCoinRequest(Long requestId, Long approverId) {
         CoinRequest request = coinRequestRepository.findById(requestId)
                 .orElseThrow(() -> new WalletException("Coin request not found"));
@@ -308,14 +270,6 @@ public class WalletService {
 
         if (approver.getRole() != Role.ADMIN) {
             throw new WalletException("Only admins can approve coin requests");
-        }
-        if (approver.getBalance().compareTo(request.getAmount()) < 0) {
-            notifyInsufficientCredit(approver, request);
-            throw new WalletException("Insufficient balance to approve request",
-                    "You don't have enough credit to approve this deposit of "
-                            + fmt(request.getAmount()) + " coins. Your balance is "
-                            + fmt(approver.getBalance())
-                            + ". Request funds and approve it again once credited.");
         }
 
         // Atomic claim: a concurrent/double approval can never proceed past this line.
@@ -340,9 +294,6 @@ public class WalletService {
 
         createTransaction(approverId, TransactionType.FUND_AGENT_TO_PLAYER, request.getAmount(),
                 TransactionStatus.COMPLETED, requestId, "Funded player " + request.getUserId());
-
-        approver.setBalance(approver.getBalance().subtract(request.getAmount()));
-        userRepository.save(approver);
 
         notifyDepositApproved(request);
 
@@ -410,136 +361,6 @@ public class WalletService {
         return coinRequestRepository.findByUserIdOrderByCreatedAtDesc(userId).stream()
                 .map(tenantMapper::toDto)
                 .toList();
-    }
-
-    // =========================================================
-    // ADMIN FUND REQUEST METHODS (Admin → Super Admin)
-    // =========================================================
-
-    @Transactional(transactionManager = "tenantTransactionManager")
-    public AdminFundRequest requestAdminFund(Long adminUserId, BigDecimal amount, String screenshotUrl) {
-        User admin = userRepository.findById(adminUserId)
-                .orElseThrow(() -> new WalletException("Admin not found"));
-
-        if (admin.getRole() != Role.ADMIN) {
-            throw new WalletException("Only admins can request funds");
-        }
-
-        if (amount.compareTo(BigDecimal.ZERO) <= 0) {
-            throw new WalletException("Amount must be positive");
-        }
-
-        AdminFundRequest request = AdminFundRequest.builder()
-                .adminUserId(adminUserId)
-                .amount(amount)
-                .screenshotUrl(screenshotUrl)
-                .status(FundStatus.PENDING)
-                .createdAt(LocalDateTime.now())
-                .build();
-
-        AdminFundRequest saved = adminFundRequestRepository.save(request);
-
-        notifyFundRequestCreated(saved);
-
-        log.info("Admin {} requested fund of amount {} from super admin", adminUserId, amount);
-        return saved;
-    }
-
-    // Not transactional as a whole: the request/admin live in the master DB while the
-    // ledger lives in the agent's tenant DB, and the two cannot share one transaction.
-    public void approveAdminFundRequest(Long requestId, Long superAdminId) {
-        User superAdmin = userRepository.findById(superAdminId)
-                .orElseThrow(() -> new WalletException("Super admin not found"));
-
-        if (superAdmin.getRole() != Role.SUPER_ADMIN) {
-            throw new WalletException("Only super admin can approve admin fund requests");
-        }
-
-        AdminFundRequest request = adminFundRequestRepository.findById(requestId)
-                .orElseThrow(() -> new WalletException("Fund request not found"));
-
-        if (request.getStatus() != FundStatus.PENDING) {
-            throw new RequestAlreadyProcessedException("Request already processed");
-        }
-
-        User admin = userRepository.findById(request.getAdminUserId())
-                .orElseThrow(() -> new WalletException("Admin not found"));
-
-        // Atomic claim: a concurrent/double approval can never proceed past this line.
-        if (adminFundRequestRepository.claimForProcessing(requestId, FundStatus.APPROVED,
-                FundStatus.PENDING, superAdminId, LocalDateTime.now(), null) == 0) {
-            throw new RequestAlreadyProcessedException("Request already processed");
-        }
-
-        try {
-            admin.setBalance(admin.getBalance().add(request.getAmount()));
-            userRepository.save(admin);
-        } catch (Exception e) {
-            // Compensation: do not leave the request approved without the credit.
-            revertFundRequestClaim(requestId);
-            throw e;
-        }
-
-        recordTenantLedger(request.getAdminUserId(), admin.getId(), TransactionType.FUND_SUPER_ADMIN_TO_AGENT,
-                request.getAmount(), requestId, "Approved fund request for admin " + request.getAdminUserId());
-        recordTenantLedger(request.getAdminUserId(), request.getAdminUserId(), TransactionType.DEPOSIT,
-                request.getAmount(), requestId, "Fund request approved by super admin");
-
-        notifyFundRequestApproved(admin, request.getAmount(), requestId);
-
-        log.info("Admin fund request {} approved by super admin {} — admin {} funded with {}",
-                requestId, superAdminId, request.getAdminUserId(), request.getAmount());
-    }
-
-    private void revertFundRequestClaim(Long requestId) {
-        try {
-            adminFundRequestRepository.claimForProcessing(requestId, FundStatus.PENDING,
-                    FundStatus.APPROVED, null, null, null);
-        } catch (Exception revertEx) {
-            log.error("CRITICAL: failed to revert fund request {} to PENDING after a failed credit", requestId, revertEx);
-        }
-    }
-
-    /**
-     * Writes a ledger row into the owning agent's tenant DB. Best-effort: funding must
-     * not fail (or roll back) just because the audit ledger write fails.
-     */
-    private void recordTenantLedger(Long adminUserId, Long userId, TransactionType type, BigDecimal amount,
-                                    Long referenceId, String description) {
-        try {
-            TenantContext.setTenant(TenantContext.tenantKeyForAdmin(adminUserId));
-            createTransaction(userId, type, amount, TransactionStatus.COMPLETED, referenceId, description);
-        } catch (Exception e) {
-            log.error("Failed to record {} ledger entry for user {} in tenant DB", type, userId, e);
-        } finally {
-            TenantContext.clear();
-        }
-    }
-
-    @Transactional(transactionManager = "tenantTransactionManager")
-    public void rejectAdminFundRequest(Long requestId, Long superAdminId, String reason) {
-        // Atomic claim: a concurrent/double rejection can never proceed past this line.
-        if (adminFundRequestRepository.claimForProcessing(requestId, FundStatus.REJECTED,
-                FundStatus.PENDING, superAdminId, LocalDateTime.now(), reason) == 0) {
-            throw new RequestAlreadyProcessedException("Request already processed");
-        }
-
-        var rejectedRequest = adminFundRequestRepository.findById(requestId).orElse(null);
-        if (rejectedRequest != null) {
-            notifyFundRequestRejected(rejectedRequest.getAdminUserId(), rejectedRequest.getAmount(), reason);
-        }
-
-        log.info("Admin fund request {} rejected by super admin {}: {}", requestId, superAdminId, reason);
-    }
-
-    @Transactional(transactionManager = "tenantTransactionManager", readOnly = true)
-    public List<AdminFundRequest> getPendingAdminFundRequests() {
-        return adminFundRequestRepository.findByStatusOrderByCreatedAtDesc(FundStatus.PENDING);
-    }
-
-    @Transactional(transactionManager = "tenantTransactionManager", readOnly = true)
-    public List<AdminFundRequest> getAdminFundRequestsByAdmin(Long adminUserId) {
-        return adminFundRequestRepository.findByAdminUserIdOrderByCreatedAtDesc(adminUserId);
     }
 
     // =========================================================
@@ -804,16 +625,6 @@ public class WalletService {
         }
     }
 
-    private void notifyInsufficientCredit(User approver, CoinRequest request) {
-        String amount = fmt(request.getAmount());
-        String balance = fmt(approver.getBalance());
-        notify(approver.getId(), "INSUFFICIENT_CREDIT",
-                "Not enough credit to approve deposit",
-                "This deposit request needs " + amount + " coins, but your balance is " + balance + ". Top up your balance, then approve the request again.",
-                "COIN_REQUEST", request.getId(),
-                "\u26A0\uFE0F Not enough credit\nDeposit request: " + amount + " coins, your balance: " + balance + ".\nTop up your balance, then approve the request in the app.");
-    }
-
     private void notifyMinWithdrawalViolation(Long playerId, BigDecimal requested, BigDecimal minimum) {
         String requestedStr = fmt(requested);
         String minStr = fmt(minimum);
@@ -899,42 +710,6 @@ public class WalletService {
                 "You received " + fmt(amount) + " coins from " + playerDisplayName(adminUserId) + ".",
                 null, null,
                 "\uD83D\uDCB0 Coins credited\n" + fmt(amount) + " coins have been added to your balance.");
-    }
-
-    private void notifyAdminFunded(Long adminUserId, BigDecimal amount) {
-        notify(adminUserId, "ADMIN_FUNDED",
-                "Funds added",
-                "Your balance was topped up by " + fmt(amount) + " coins.",
-                null, null,
-                "\uD83D\uDCB0 Funds added\n" + fmt(amount) + " coins have been credited to your account.");
-    }
-
-    private void notifyFundRequestCreated(AdminFundRequest request) {
-        String adminName = playerDisplayName(request.getAdminUserId());
-        String amount = fmt(request.getAmount());
-        for (User superAdmin : userRepository.findAllByRole(Role.SUPER_ADMIN)) {
-            notify(superAdmin.getId(), "FUND_REQUEST",
-                    "Admin fund request",
-                    adminName + " requested " + amount + " coins.",
-                    "ADMIN_FUND_REQUEST", request.getId(), null);
-        }
-    }
-
-    private void notifyFundRequestApproved(User admin, BigDecimal amount, Long requestId) {
-        notify(admin.getId(), "FUND_REQUEST_APPROVED",
-                "Fund request approved",
-                "Your request for " + fmt(amount) + " coins was approved and credited.",
-                "ADMIN_FUND_REQUEST", requestId,
-                "\u2705 Fund request approved\n" + fmt(amount) + " coins have been credited to your account.");
-    }
-
-    private void notifyFundRequestRejected(Long adminUserId, BigDecimal requestAmount, String reason) {
-        String why = (reason == null || reason.isBlank()) ? "Please contact support." : reason;
-        notify(adminUserId, "FUND_REQUEST_REJECTED",
-                "Fund request rejected",
-                "Your fund request for " + fmt(requestAmount) + " coins was rejected. Reason: " + why,
-                null, null,
-                "\u274C Fund request rejected\n" + fmt(requestAmount) + " coins.\nReason: " + why);
     }
 
     private void notifyGameWin(Long playerId, BigDecimal amount, Long gameId) {

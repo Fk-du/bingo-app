@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { ProtectedRoute } from '@/components/common/ProtectedRoute';
 import { Role } from '@/types/enums';
 import { useCoinRequests, useHandleCoinRequest } from '@/hooks/useCoins';
-import { usePlayers, useAdminWallet } from '@/hooks/usePlayers';
+import { usePlayers } from '@/hooks/usePlayers';
 import { PaymentProof } from '@/components/common/PaymentProof';
 import { ActionButton, EmptyState, MetricCard, SectionHeader, SelectField, Surface, StatusPill, TabBar, TextAreaField } from '@/components/ui/Surface';
 
@@ -107,7 +107,6 @@ function ApproveDialog({ requestId, amount, playerLabel, screenshotUrl, onClose,
 export default function AdminCoinsPage() {
   const { data: requests, isLoading } = useCoinRequests();
   const { data: players } = usePlayers();
-  const { data: adminWallet } = useAdminWallet();
   const { mutate: handleRequest } = useHandleCoinRequest();
   const [reviewTarget, setReviewTarget] = useState<{
     id: number;
@@ -139,13 +138,7 @@ export default function AdminCoinsPage() {
         description="Approve or reject wallet requests from players."
       />
 
-      <div className="mb-4 grid grid-cols-3 gap-3">
-        <MetricCard
-          label="Your Balance"
-          value={adminWallet?.balance.toLocaleString() ?? '—'}
-          note="Available to fund"
-          accent="gold"
-        />
+      <div className="mb-4 grid grid-cols-2 gap-3">
         <MetricCard label="Pending" value={pending.length} accent="warning" />
         <MetricCard label="Approved Total" value={totalApproved.toLocaleString()} accent="success" />
       </div>

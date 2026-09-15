@@ -58,33 +58,6 @@ export function useWarnAgent() {
   });
 }
 
-export function useFundRequests() {
-  return useQuery({
-    queryKey: ['fund-requests'],
-    queryFn: async () => {
-      const res = await agentsApi.getFundRequests();
-      return res.data;
-    },
-  });
-}
-
-export function useCreateFundRequest() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: agentsApi.createFundRequest,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['fund-requests'] }),
-  });
-}
-
-export function useHandleFundRequest() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, action, reason }: { id: number; action: string; reason?: string }) =>
-      agentsApi.handleFundRequest(id, { action, reason }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['fund-requests'] }),
-  });
-}
-
 export function useOwnerFeeSummary() {
   return useQuery({
     queryKey: ['fee-summary'],

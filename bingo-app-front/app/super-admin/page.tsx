@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { ProtectedRoute } from '@/components/common/ProtectedRoute';
 import { Role } from '@/types/enums';
-import { useAgents, useFundRequests } from '@/hooks/useAgents';
+import { useAgents } from '@/hooks/useAgents';
 import { useCardRequests } from '@/hooks/useCards';
 import { useGamesReport } from '@/hooks/useReports';
 import { MetricCard, SectionHeader, Surface } from '@/components/ui/Surface';
@@ -12,12 +12,10 @@ import { GameStatus } from '@/types';
 export default function SuperAdminDashboard() {
   const { data: agents, isLoading: loadingAgents } = useAgents();
   const { data: allGames, isLoading: loadingAllGames } = useGamesReport();
-  const { data: fundRequests, isLoading: loadingFunds } = useFundRequests();
   const { data: cardRequests } = useCardRequests();
 
   const activeAgents = agents?.filter((a) => a.active) ?? [];
   const pendingApproval = agents?.filter((a) => !a.approved && a.active) ?? [];
-  const pendingFunds = fundRequests?.filter((r) => r.status === 'PENDING') ?? [];
   const pendingCardRequests = cardRequests?.filter((r) => r.status === 'PENDING') ?? [];
 
   const endedGames = allGames?.filter((g) => g.status === GameStatus.ENDED) ?? [];
@@ -96,18 +94,7 @@ export default function SuperAdminDashboard() {
         </div>
       </Surface>
 
-      <div className="mt-4 grid gap-3 sm:grid-cols-2">
-        <Link href="/super-admin/agents">
-          <Surface className="p-4 transition hover:border-bp-primary/40">
-            <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-bp-muted">Fund Requests</p>
-            <p className="mt-1.5 text-2xl font-bold text-bp-text">
-              {loadingFunds ? '...' : pendingFunds.length}
-            </p>
-            <p className="mt-1 text-xs text-bp-muted">
-              {pendingFunds.length > 0 ? 'pending approval across agents' : 'No pending requests'}
-            </p>
-          </Surface>
-        </Link>
+      <div className="mt-4">
         <Surface className="p-4">
           <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-bp-muted">Entry Fees Collected</p>
           <p className="mt-1.5 text-2xl font-bold text-bp-gold">

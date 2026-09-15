@@ -13,18 +13,6 @@ export interface AgentResponse {
   active: boolean;
 }
 
-export interface AgentFundRequestResponse {
-  id: number;
-  adminUserId: number;
-  amount: number;
-  screenshotUrl: string | null;
-  status: FundStatus;
-  approvedBy: number | null;
-  approvedAt: string | null;
-  rejectionReason: string | null;
-  createdAt: string;
-}
-
 export interface InviteCodeResponse {
   id: number;
   code: string;
@@ -67,11 +55,6 @@ export interface AgentStatsResponse {
   totalTransactions: number;
   totalCommission: number;
   balance: number;
-}
-
-export interface AgentFundRequestCreate {
-  amount: number;
-  screenshotUrl?: string;
 }
 
 export interface OwnerFeeSettlementResponse {

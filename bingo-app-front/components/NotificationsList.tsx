@@ -9,13 +9,10 @@ import { AppNotification, NotificationType } from '@/types';
 const TYPE_COLORS: Record<string, string> = {
   [NotificationType.DEPOSIT_REQUEST]: 'text-bp-gold',
   [NotificationType.WITHDRAWAL_REQUEST]: 'text-bp-gold',
-  [NotificationType.FUND_REQUEST]: 'text-bp-gold',
   [NotificationType.CLAIM_PENDING]: 'text-bp-warning',
   [NotificationType.DEPOSIT_APPROVED]: 'text-emerald-500',
   [NotificationType.WITHDRAWAL_APPROVED]: 'text-emerald-500',
   [NotificationType.PLAYER_FUNDED]: 'text-emerald-500',
-  [NotificationType.ADMIN_FUNDED]: 'text-emerald-500',
-  [NotificationType.FUND_REQUEST_APPROVED]: 'text-emerald-500',
   [NotificationType.WIN]: 'text-emerald-500',
   [NotificationType.COMMISSION_CREDITED]: 'text-emerald-500',
   [NotificationType.ADMIN_APPROVED]: 'text-emerald-500',
@@ -24,9 +21,7 @@ const TYPE_COLORS: Record<string, string> = {
   [NotificationType.ADMIN_SUSPENDED]: 'text-red-500',
   [NotificationType.DEPOSIT_REJECTED]: 'text-red-500',
   [NotificationType.WITHDRAWAL_REJECTED]: 'text-red-500',
-  [NotificationType.FUND_REQUEST_REJECTED]: 'text-red-500',
   [NotificationType.ADMIN_REJECTED]: 'text-red-500',
-  [NotificationType.INSUFFICIENT_CREDIT]: 'text-bp-gold',
   [NotificationType.MIN_WITHDRAWAL]: 'text-bp-gold',
   [NotificationType.MISSING_PAYMENT_SCREENSHOT]: 'text-bp-gold',
   [NotificationType.NEW_PLAYER]: 'text-bp-primary',
@@ -165,8 +160,5 @@ function notificationHref(notification: AppNotification, navBase: string): strin
   }
   if (refType === 'COIN_REQUEST') return `${navBase}/coins`;
   if (refType === 'WITHDRAWAL') return `${navBase}/withdrawals`;
-  if (refType === 'FUND_REQUEST') {
-    return navBase === '/super-admin' ? `${navBase}/agents` : `${navBase}/fund-requests`;
-  }
   return null;
 }

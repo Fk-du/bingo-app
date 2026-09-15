@@ -44,26 +44,12 @@ CREATE TABLE IF NOT EXISTS invite_codes (
     created_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
-CREATE TABLE IF NOT EXISTS admin_fund_requests (
-    id BIGSERIAL PRIMARY KEY,
-    admin_user_id BIGINT NOT NULL,
-    amount DECIMAL(19,2) NOT NULL,
-    screenshot_url VARCHAR(500),
-    status VARCHAR(20) NOT NULL DEFAULT 'PENDING',
-    approved_by BIGINT,
-    approved_at TIMESTAMP,
-    rejection_reason TEXT,
-    created_at TIMESTAMP NOT NULL DEFAULT NOW()
-);
-
 CREATE INDEX IF NOT EXISTS idx_users_telegram ON users(telegram_id);
 CREATE INDEX IF NOT EXISTS idx_users_admin ON users(admin_user_id);
 CREATE INDEX IF NOT EXISTS idx_users_parent ON users(parent_id);
 CREATE INDEX IF NOT EXISTS idx_tenant_registry_admin ON tenant_registry(admin_user_id);
 CREATE INDEX IF NOT EXISTS idx_invite_codes_code ON invite_codes(code);
 CREATE INDEX IF NOT EXISTS idx_invite_codes_creator ON invite_codes(creator_id);
-CREATE INDEX IF NOT EXISTS idx_admin_fund_admin ON admin_fund_requests(admin_user_id);
-CREATE INDEX IF NOT EXISTS idx_admin_fund_status ON admin_fund_requests(status);
 
 -- Tenant databases are auto-created by the application when new admins register.
 -- Each database is named bingo_agent_{adminUserId}.

@@ -14,6 +14,9 @@ public final class SchemaMigrationHelper {
     }
 
     public static void runMasterMigrations(Connection conn) throws SQLException {
+        // Fund request channel has been removed; drop the table if it still exists.
+        execute(conn, "DROP TABLE IF EXISTS admin_fund_requests CASCADE");
+
         renameColumnIfExists(conn, "users", "agent_id", "admin_user_id");
         renameColumnIfExists(conn, "tenant_registry", "agent_id", "admin_user_id");
 
@@ -25,14 +28,6 @@ public final class SchemaMigrationHelper {
 
         migrateAgentsIntoUsers(conn);
 
-        if (tableExists(conn, "agent_fund_requests")) {
-            renameColumnIfExists(conn, "agent_fund_requests", "agent_id", "admin_user_id");
-            if (!tableExists(conn, "admin_fund_requests")) {
-                execute(conn, "ALTER TABLE agent_fund_requests RENAME TO admin_fund_requests");
-                log.info("Renamed table agent_fund_requests -> admin_fund_requests");
-            }
-        }
-
         dropIndexIfExists(conn, "idx_users_agent");
         createIndexIfNotExists(conn, "idx_users_admin", "users", "admin_user_id");
 
@@ -40,13 +35,6 @@ public final class SchemaMigrationHelper {
 
         dropIndexIfExists(conn, "idx_tenant_registry_agent");
         createIndexIfNotExists(conn, "idx_tenant_registry_admin", "tenant_registry", "admin_user_id");
-
-        dropIndexIfExists(conn, "idx_agent_fund_agent");
-        dropIndexIfExists(conn, "idx_agent_fund_status");
-        if (tableExists(conn, "admin_fund_requests")) {
-            createIndexIfNotExists(conn, "idx_admin_fund_admin", "admin_fund_requests", "admin_user_id");
-            createIndexIfNotExists(conn, "idx_admin_fund_status", "admin_fund_requests", "status");
-        }
     }
 
     public static void runTenantMigrations(Connection conn) throws SQLException {

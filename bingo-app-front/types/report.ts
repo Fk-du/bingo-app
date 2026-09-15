@@ -18,7 +18,6 @@ export interface DashboardSummaryResponse {
   recentGames: GameResponse[];
   pendingCoinRequests: number;
   pendingWithdrawals: number;
-  pendingFundRequests: number;
   balance: number;
 }
 

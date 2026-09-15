@@ -2,9 +2,7 @@ import apiClient from './client';
 import {
   ApiResponse,
   AgentResponse,
-  AgentFundRequestResponse,
   AgentStatusRequest,
-  AgentFundRequestCreate,
   AdminWarningResponse,
   AgentStatsResponse,
   OwnerFeeSettlementResponse,
@@ -36,18 +34,6 @@ export const agentsApi = {
   },
   getStats: async (id: number) => {
     const res = await apiClient.get<ApiResponse<AgentStatsResponse>>(`/agents/${id}/stats`);
-    return res.data;
-  },
-  createFundRequest: async (data: AgentFundRequestCreate) => {
-    const res = await apiClient.post<ApiResponse<AgentFundRequestResponse>>('/agents/fund-requests', data);
-    return res.data;
-  },
-  getFundRequests: async () => {
-    const res = await apiClient.get<ApiResponse<AgentFundRequestResponse[]>>('/agents/fund-requests');
-    return res.data;
-  },
-  handleFundRequest: async (id: number, data: { action: string; reason?: string }) => {
-    const res = await apiClient.patch<ApiResponse<string>>(`/agents/fund-requests/${id}`, data);
     return res.data;
   },
   getFeeSummary: async () => {

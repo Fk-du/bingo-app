@@ -241,20 +241,6 @@ public class TenantManagementService {
             """);
 
             stmt.execute("""
-                CREATE TABLE IF NOT EXISTS admin_fund_requests (
-                    id BIGSERIAL PRIMARY KEY,
-                    admin_user_id BIGINT NOT NULL,
-                    amount DECIMAL(19,2) NOT NULL,
-                    screenshot_url VARCHAR(500),
-                    status VARCHAR(20) NOT NULL DEFAULT 'PENDING',
-                    approved_by BIGINT,
-                    approved_at TIMESTAMP,
-                    rejection_reason TEXT,
-                    created_at TIMESTAMP NOT NULL DEFAULT NOW()
-                )
-            """);
-
-            stmt.execute("""
                 CREATE TABLE IF NOT EXISTS owner_fee_settlements (
                     id BIGSERIAL PRIMARY KEY,
                     admin_user_id BIGINT NOT NULL,

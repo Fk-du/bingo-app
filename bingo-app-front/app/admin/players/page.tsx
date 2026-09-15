@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react';
 import { ProtectedRoute } from '@/components/common/ProtectedRoute';
 import { Role } from '@/types/enums';
-import { usePlayers, useFundPlayer, useAdminWallet } from '@/hooks/usePlayers';
+import { usePlayers, useFundPlayer } from '@/hooks/usePlayers';
 import { useInviteLink, useInviteStats } from '@/hooks/useInvite';
 import { FundPlayerDialog } from '@/components/players/FundPlayerDialog';
 import {
@@ -24,7 +24,6 @@ function playerDisplayName(p: { firstName?: string; lastName?: string; username?
 
 export default function AdminPlayersPage() {
   const { data: players, isLoading } = usePlayers();
-  const { data: adminWallet } = useAdminWallet();
   const { data: inviteLink } = useInviteLink();
   const { data: inviteStats } = useInviteStats();
   const { mutate: fundPlayer, isPending } = useFundPlayer();
@@ -122,13 +121,7 @@ export default function AdminPlayersPage() {
         </Surface>
       )}
 
-      <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <MetricCard
-          label="Your Balance"
-          value={adminWallet?.balance.toLocaleString() ?? '—'}
-          note="Available to fund"
-          accent="gold"
-        />
+      <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-3">
         <MetricCard
           label="Total Players"
           value={players?.length ?? 0}

@@ -16,6 +16,5 @@ public record DashboardSummaryResponse(
         List<GameResponse> recentGames,
         long pendingCoinRequests,
         long pendingWithdrawals,
-        long pendingFundRequests,
         BigDecimal balance
 ) {}

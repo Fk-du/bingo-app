@@ -7,7 +7,7 @@ import { useActiveGames } from '@/hooks/useGames';
 import { useDashboardSummary, useRevenueReport } from '@/hooks/useReports';
 import { useAuthStore } from '@/store/auth.store';
 import { ActionButton, LiveBadge, MetricCard, Surface, StatusPill } from '@/components/ui/Surface';
-import { IconPlus, IconCoin } from '@/components/ui/Icons';
+import { IconPlus } from '@/components/ui/Icons';
 
 export default function AdminDashboard() {
   const { data: games } = useActiveGames();
@@ -17,11 +17,9 @@ export default function AdminDashboard() {
 
   const pendingCoins = summary?.pendingCoinRequests ?? 0;
   const pendingWithdrawals = summary?.pendingWithdrawals ?? 0;
-  const pendingFunds = summary?.pendingFundRequests ?? 0;
   const activeGame = games?.find((g) => g.status === GameStatus.IN_PROGRESS);
   const pendingClaimsGames = summary?.pendingClaimsCount ?? 0;
   const displayName = user?.firstName ?? user?.username ?? 'Agent';
-  const balance = summary?.balance ?? user?.balance ?? 0;
 
   return (
     <ProtectedRoute roles={[Role.ADMIN]}>
@@ -29,10 +27,6 @@ export default function AdminDashboard() {
         <div>
           <p className="text-sm text-bp-muted">Welcome back,</p>
           <h1 className="text-2xl font-bold text-bp-text">Agent {displayName}</h1>
-        </div>
-        <div className="text-right">
-          <p className="text-xs text-bp-muted uppercase tracking-wider">Balance</p>
-          <p className="text-xl font-bold text-bp-gold">{balance.toLocaleString()}</p>
         </div>
       </div>
 
@@ -96,12 +90,6 @@ export default function AdminDashboard() {
       )}
 
       <div className="mb-4 grid grid-cols-2 gap-3">
-        <Link href="/admin/fund-requests">
-          <Surface className="p-4 text-center transition hover:border-bp-primary/40">
-            <IconCoin className="mx-auto mb-1 h-5 w-5 text-bp-gold" />
-            <p className="text-sm font-semibold text-bp-text">Request Funds</p>
-          </Surface>
-        </Link>
         <Link href="/admin/cards">
           <Surface className="p-4 text-center transition hover:border-bp-primary/40">
             <IconPlus className="mx-auto mb-1 h-5 w-5 text-bp-primary" />
@@ -153,7 +141,7 @@ export default function AdminDashboard() {
         </div>
       </Surface>
 
-      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+      <div className="mt-4">
         <Surface className="p-4">
           <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-bp-muted">Players</p>
           <p className="mt-1.5 text-2xl font-bold text-bp-text">{summary?.totalPlayers ?? 0}</p>
@@ -173,20 +161,6 @@ export default function AdminDashboard() {
           {summary && summary.totalPlayers > 0 && (
             <Link href="/admin/players" className="mt-2 block text-center text-xs text-bp-primary">
               View all {summary.totalPlayers} players
-            </Link>
-          )}
-        </Surface>
-        <Surface className="p-4">
-          <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-bp-muted">Fund Requests</p>
-          <p className="mt-1.5 text-2xl font-bold text-bp-text">{pendingFunds}</p>
-          <p className="mt-1 text-xs text-bp-muted">
-            {pendingFunds > 0 ? `${pendingFunds} pending approval` : 'No pending requests'}
-          </p>
-          {pendingFunds > 0 && (
-            <Link href="/admin/fund-requests">
-              <ActionButton variant="outline" className="mt-3 w-full">
-                Review
-              </ActionButton>
             </Link>
           )}
         </Surface>

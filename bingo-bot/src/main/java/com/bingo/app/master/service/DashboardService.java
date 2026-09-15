@@ -2,9 +2,6 @@ package com.bingo.app.master.service;
 
 import com.bingo.app.master.dto.response.DashboardSummaryResponse;
 import com.bingo.app.master.entity.User;
-import com.bingo.app.master.enums.FundStatus;
-import com.bingo.app.master.enums.Role;
-import com.bingo.app.master.repository.AdminFundRequestRepository;
 import com.bingo.app.master.repository.UserRepository;
 import com.bingo.app.tenant.entity.Transaction;
 import com.bingo.app.tenant.enums.GameStatus;
@@ -29,7 +26,6 @@ import java.util.Map;
 public class DashboardService {
 
     private final UserRepository userRepository;
-    private final AdminFundRequestRepository adminFundRequestRepository;
     private final PlayerService playerService;
     private final GameService gameService;
     private final WalletService walletService;
@@ -51,8 +47,6 @@ public class DashboardService {
         long pendingClaims = gameService.countGamesByStatusForAdmin(adminId, List.of(GameStatus.CLAIM_PENDING));
         long pendingCoinRequests = walletService.countPendingCoinRequestsForAdmin(adminId);
         long pendingWithdrawals = walletService.countPendingWithdrawalsForAdmin(adminId);
-        long pendingFundRequests = adminFundRequestRepository
-                .countByAdminUserIdAndStatus(adminId, FundStatus.PENDING);
 
         return DashboardSummaryResponse.builder()
                 .totalPlayers(players.size())
@@ -62,7 +56,6 @@ public class DashboardService {
                 .recentGames(recentGames)
                 .pendingCoinRequests(pendingCoinRequests)
                 .pendingWithdrawals(pendingWithdrawals)
-                .pendingFundRequests(pendingFundRequests)
                 .balance(admin.getBalance())
                 .build();
     }

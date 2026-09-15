@@ -45,21 +45,6 @@ public class MasterMapper {
                 .build();
     }
 
-    public AdminFundRequestResponse toDto(AdminFundRequest request) {
-        if (request == null) return null;
-        return AdminFundRequestResponse.builder()
-                .id(request.getId())
-                .adminUserId(request.getAdminUserId())
-                .amount(request.getAmount())
-                .screenshotUrl(request.getScreenshotUrl())
-                .status(request.getStatus())
-                .approvedBy(request.getApprovedBy())
-                .approvedAt(request.getApprovedAt())
-                .rejectionReason(request.getRejectionReason())
-                .createdAt(request.getCreatedAt())
-                .build();
-    }
-
     public OwnerFeeSettlementResponse toDto(OwnerFeeSettlement settlement) {
         if (settlement == null) return null;
         return OwnerFeeSettlementResponse.builder()
