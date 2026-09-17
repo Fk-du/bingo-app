@@ -3,59 +3,75 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 const STORAGE_KEY = 'bingo-call-sound-muted';
+const SOUND_BASE = '/sounds/bingo';
 
 function letterFor(n: number): string {
   if (n >= 1 && n <= 15) return 'B';
   if (n >= 16 && n <= 30) return 'I';
   if (n >= 31 && n <= 45) return 'N';
   if (n >= 46 && n <= 60) return 'G';
-  return 'O';
+  if (n >= 61 && n <= 75) return 'O';
+  return '';
 }
 
-function callTextFor(n: number): string {
-  return `${letterFor(n)} ${n}`;
+function clipUrlFor(n: number): string | null {
+  const letter = letterFor(n);
+  if (!letter) return null;
+  return `${SOUND_BASE}/${letter.toLowerCase()}-${n}.mp3`;
+}
+
+const clipCache = new Map<string, HTMLAudioElement>();
+
+function playClip(n: number) {
+  if (typeof window === 'undefined') return;
+  const url = clipUrlFor(n);
+  if (!url) return;
+  let audio = clipCache.get(url);
+  if (!audio) {
+    audio = new Audio(url);
+    audio.preload = 'auto';
+    clipCache.set(url, audio);
+  }
+  audio.currentTime = 0;
+  const promise = audio.play();
+  if (promise !== undefined) {
+    promise.catch(() => {
+      speakFallback(`Number ${n}`);
+    });
+  }
 }
 
 function speechSynthesisAvailable(): boolean {
   return typeof window !== 'undefined' && 'speechSynthesis' in window;
 }
 
-function resolveVoice(): SpeechSynthesisVoice | null {
-  if (!speechSynthesisAvailable()) return null;
-  const voices = window.speechSynthesis.getVoices();
-  const preferred = ['en-US', 'en-GB'];
-  for (const tag of preferred) {
-    const match = voices.find((v) => v.lang.startsWith(tag));
-    if (match) return match;
-  }
-  return null;
-}
-
-function speak(text: string) {
+function speakFallback(text: string) {
   if (!speechSynthesisAvailable()) return;
   const utter = new SpeechSynthesisUtterance(text);
   utter.rate = 0.85;
   utter.pitch = 1;
   utter.volume = 1;
-  const voice = resolveVoice();
-  if (voice) {
-    utter.voice = voice;
-    utter.lang = voice.lang;
+  const voices = window.speechSynthesis.getVoices();
+  const preferred = ['en-US', 'en-GB'];
+  for (const tag of preferred) {
+    const voice = voices.find((v) => v.lang.startsWith(tag));
+    if (voice) {
+      utter.voice = voice;
+      utter.lang = voice.lang;
+      break;
+    }
   }
   window.speechSynthesis.speak(utter);
 }
 
-let voicesReady = false;
-
-function preloadVoices() {
-  if (!speechSynthesisAvailable()) return;
-  window.speechSynthesis.getVoices();
-  if (!voicesReady) {
-    voicesReady = true;
-    window.speechSynthesis.onvoiceschanged = () => {
-      window.speechSynthesis.getVoices();
-    };
-  }
+function unlockAudio() {
+  if (typeof window === 'undefined' || !('AudioContext' in window)) return;
+  try {
+    const Ctor = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!Ctor) return;
+    const ctx = new Ctor();
+    if (ctx.state === 'suspended') void ctx.resume();
+  } catch { /* */ }
 }
 
 export function useNumberAnnouncer(numbers: number[]) {
@@ -63,10 +79,7 @@ export function useNumberAnnouncer(numbers: number[]) {
   const mutedRef = useRef(false);
   const prevLen = useRef<number | null>(null);
   const numbersRef = useRef<number[]>(numbers);
-
-  useEffect(() => {
-    preloadVoices();
-  }, []);
+  const primed = useRef(false);
 
   useEffect(() => {
     numbersRef.current = numbers;
@@ -85,12 +98,29 @@ export function useNumberAnnouncer(numbers: number[]) {
     return () => { cancelled = true; };
   }, []);
 
+  // WebViews (e.g. Telegram) block autoplay until a user gesture. A tap on the
+  // Sound toggle is the natural first interaction, so prime audio there too.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const prime = () => {
+      if (primed.current) return;
+      primed.current = true;
+      unlockAudio();
+    };
+    window.addEventListener('pointerdown', prime, { once: true });
+    window.addEventListener('keydown', prime, { once: true });
+    return () => {
+      window.removeEventListener('pointerdown', prime);
+      window.removeEventListener('keydown', prime);
+    };
+  }, []);
+
   useEffect(() => {
     const len = numbers.length;
     const prev = prevLen.current;
     prevLen.current = len;
     if (mutedRef.current || prev === null || len <= prev || len === 0) return;
-    speak(callTextFor(numbers[len - 1]));
+    playClip(numbers[len - 1]);
   }, [numbers]);
 
   const toggleMuted = useCallback(() => {
@@ -101,11 +131,14 @@ export function useNumberAnnouncer(numbers: number[]) {
       if (speechSynthesisAvailable()) {
         window.speechSynthesis.cancel();
       }
+      if (!primed.current) {
+        primed.current = true;
+        unlockAudio();
+      }
       if (!next) {
-        preloadVoices();
         const nums = numbersRef.current;
         const last = nums.length > 0 ? nums[nums.length - 1] : null;
-        speak(last != null ? callTextFor(last) : 'Sound enabled');
+        if (last != null) playClip(last);
       }
       return next;
     });

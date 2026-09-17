@@ -581,7 +581,12 @@ export default function PlayerGamePage({ params }: { params: Promise<{ id: strin
                 <span className="text-xs">{autoMark ? 'Auto-mark on' : 'Manual marking'}</span>
               </button>
               <label className="flex cursor-pointer items-center gap-2 rounded-xl border border-bp-border bg-bp-surface-elevated px-3 py-2 text-bp-muted hover:border-bp-primary/30 transition">
-                <input type="checkbox" defaultChecked className="h-4 w-4 rounded border-bp-border accent-bp-primary" />
+                <input
+                  type="checkbox"
+                  checked={!muted}
+                  onChange={toggleMuted}
+                  className="h-4 w-4 rounded border-bp-border accent-bp-primary"
+                />
                 Sound
               </label>
             </div>
