@@ -105,7 +105,7 @@ public class GameService {
                         GameStatus.PAUSED, GameStatus.CLAIM_PENDING))
                 .stream()
                 .map(game -> tenantMapper.toDto(game).toBuilder()
-                        .registeredPlayers(gameCardRepository.countByGameId(game.getId()))
+                        .registeredPlayers((int) gameCardRepository.countDistinctPlayersByGameId(game.getId()))
                         .build())
                 .toList();
     }
@@ -123,7 +123,7 @@ public class GameService {
                 .stream()
                 .map(game -> tenantMapper.toDto(game).toBuilder()
                         .registered(gameCardRepository.existsByGameIdAndPlayerId(game.getId(), playerId))
-                        .registeredPlayers(gameCardRepository.countByGameId(game.getId()))
+                        .registeredPlayers((int) gameCardRepository.countDistinctPlayersByGameId(game.getId()))
                         .activeGameId(activeGameId)
                         .build())
                 .toList();
@@ -152,7 +152,7 @@ public class GameService {
                     "This game can no longer be started.");
         }
 
-        long playerCount = gameCardRepository.countByGameId(gameId);
+        long playerCount = gameCardRepository.countDistinctPlayersByGameId(gameId);
         if (playerCount < 2) {
             throw new GameProgressException(
                     "Game needs at least 2 players to start. Currently: " + playerCount,

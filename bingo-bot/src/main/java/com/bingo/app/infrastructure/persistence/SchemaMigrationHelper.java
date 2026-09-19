@@ -46,6 +46,33 @@ public final class SchemaMigrationHelper {
 
         dropIndexIfExists(conn, "idx_games_agent_status");
         createIndexIfNotExists(conn, "idx_games_admin_status", "games", "admin_user_id, status");
+
+        // Per-admin game automation template (auto-create + auto-start).
+        createTableIfNotExists(conn, """
+                CREATE TABLE IF NOT EXISTS automation_config (
+                    id BIGSERIAL PRIMARY KEY,
+                    admin_user_id BIGINT UNIQUE,
+                    enabled BOOLEAN NOT NULL DEFAULT FALSE,
+                    entry_fee DECIMAL(19,2),
+                    max_players INTEGER,
+                    call_interval INTEGER,
+                    commission_percent DECIMAL(19,2),
+                    winning_pattern VARCHAR(50),
+                    custom_pattern_name VARCHAR(255),
+                    custom_pattern_cells TEXT,
+                    auto_mark BOOLEAN NOT NULL DEFAULT TRUE,
+                    registration_window_seconds INTEGER,
+                    cooldown_seconds INTEGER,
+                    start_when_full BOOLEAN NOT NULL DEFAULT TRUE,
+                    next_game_at TIMESTAMP,
+                    updated_at TIMESTAMP
+                )
+                """);
+        createIndexIfNotExists(conn, "idx_automation_admin", "automation_config", "admin_user_id");
+    }
+
+    static void createTableIfNotExists(Connection conn, String createSql) throws SQLException {
+        execute(conn, createSql);
     }
 
     private static void migrateAgentsIntoUsers(Connection conn) throws SQLException {

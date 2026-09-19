@@ -268,6 +268,17 @@ public class GameController {
             @AuthenticationPrincipal UserPrincipal principal,
             @PathVariable Long id) {
         var result = gameEngineService.approveAllClaims(id, principal.getUser().getId());
+        if (result.isRestarted()) {
+            return ApiResponse.ok("Too many players claimed — the game was restarted with a fresh number sequence. Players were notified.",
+                    BingoClaimResultResponse.builder()
+                            .valid(false)
+                            .pendingReview(false)
+                            .gameEnded(false)
+                            .approvedCount(0)
+                            .rewardAmount(java.math.BigDecimal.ZERO)
+                            .restarted(true)
+                            .build());
+        }
         return ApiResponse.ok("All pending claims approved — winners share the pot. Game ended.",
                 BingoClaimResultResponse.builder()
                         .valid(true)

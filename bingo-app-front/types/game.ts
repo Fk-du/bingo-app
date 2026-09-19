@@ -129,6 +129,7 @@ export interface BingoClaimResultResponse {
   rewardAmount: number;
   commission?: number;
   banned: boolean;
+  restarted?: boolean;
 }
 
 export interface RegisterResponse {
@@ -156,6 +157,39 @@ export interface AdminGameStateResponse {
   calledNumbers: number[];
   calledNumbersLabeled?: string[];
   playerCount: number;
+}
+
+export interface AutomationConfig {
+  adminUserId: number;
+  enabled: boolean;
+  entryFee: number;
+  maxPlayers: number;
+  callInterval: number;
+  commissionPercent: number;
+  winningPattern: string | null;
+  customPatternName?: string | null;
+  customPatternCells?: string | null;
+  autoMark: boolean;
+  registrationWindowSeconds: number;
+  cooldownSeconds: number;
+  startWhenFull: boolean;
+  nextGameAt?: string | null;
+  updatedAt?: string | null;
+}
+
+export interface AutomationConfigRequest {
+  entryFee: number;
+  maxPlayers: number;
+  callInterval: number;
+  commissionPercent: number;
+  winningPattern?: string;
+  customPatternName?: string;
+  customPatternCells?: string;
+  autoMark?: boolean;
+  registrationWindowSeconds: number;
+  cooldownSeconds: number;
+  startWhenFull?: boolean;
+  enabled?: boolean;
 }
 
 export interface GameCardResponse {

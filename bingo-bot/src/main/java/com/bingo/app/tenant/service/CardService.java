@@ -47,9 +47,6 @@ public class CardService {
     private static final int FREE_SPACE_ROW = 2;
     private static final int FREE_SPACE_COL = 2;
 
-    @Value("${bingo.max-cards-per-player:3}")
-    private int maxCardsPerPlayer;
-
     /** Every admin tenant is guaranteed at least this many cards in its pool. */
     @Value("${bingo.initial-card-pool:100}")
     private int initialCardPoolSize;
@@ -196,13 +193,7 @@ public class CardService {
                     "This game is no longer accepting registrations.");
         }
 
-        // Players may hold multiple cards in the same game (each an entry), up to a cap.
-        long playerCards = gameCardRepository.countByGameIdAndPlayerId(gameId, playerId);
-        if (playerCards >= maxCardsPerPlayer) {
-            throw new PlayerActionException("Card limit reached",
-                    "You already play " + playerCards + " card" + (playerCards == 1 ? "" : "s")
-                            + " in this game. The limit is " + maxCardsPerPlayer + ".");
-        }
+        // Players may hold multiple cards in the same game (each an entry).
 
         // Enforce: player can only be in ONE active game at a time (holding multiple
         // cards in the same game is allowed — the current game is excluded here).

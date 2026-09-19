@@ -61,6 +61,7 @@ public class GameEngineService {
     private final UserRepository userRepository;
     private final NotificationService notificationService;
     private final ConfigService configService;
+    private final GameService gameService;
 
 
     @Value("${bingo.fees.admin-commission-percent:10}")
@@ -444,6 +445,14 @@ public class GameEngineService {
                     "Card #" + gameCard.getCard().getId() + " already claimed Bingo in game " + gameId);
         }
 
+        // A player holding multiple cards may only claim once per game: a second
+        // claim on another card would stack pending claims and double their share
+        // when the admin approves all simultaneous winners.
+        if (bingoClaimRepository.existsByGameIdAndPlayerIdAndResult(gameId, playerId, "VALID")) {
+            throw new RequestAlreadyProcessedException(
+                    "Player already claimed Bingo in game " + gameId + " with another card");
+        }
+
         // Get called numbers so far
         List<Integer> calledNumbers = calledNumberRepository
                 .findCalledNumbersByGameId(gameId);
@@ -534,21 +543,31 @@ public class GameEngineService {
                     "There are no claims waiting for review.");
         }
         if (pending.size() > MAX_SIMULTANEOUS_WINNERS) {
-            throw new GameProgressException(
-                    "Too many simultaneous winners: " + pending.size(),
-                    pending.size() + " players claimed at once. Approving is only allowed for up to "
-                            + MAX_SIMULTANEOUS_WINNERS + " winners — restart the game instead.");
+            // More than the cap of simultaneous winners claimed at once — no claimant can be
+            // trusted to have the only valid Bingo. Abandon the round: void the claims (no bans),
+            // deal a freshly shuffled number sequence, restart the countdown and tell every player
+            // that a fresh game is starting.
+            return restartDueToTooManyClaims(gameId, adminId, pending.size());
         }
 
-        // Atomically lock every claim — any that lose a race are dropped
+        // Atomically lock every claim — any that lose a race are dropped.
+        // A player may only win one share: skip a second claim from the same player.
         LocalDateTime now = LocalDateTime.now();
+        java.util.Set<Long> claimedPlayers = new java.util.HashSet<>();
         List<BingoClaim> winners = new java.util.ArrayList<>();
         for (BingoClaim c : pending) {
+            if (!claimedPlayers.add(c.getPlayerId())) {
+                continue;
+            }
             if (bingoClaimRepository.claimForProcessing(c.getId(), adminId, now) == 1) {
                 winners.add(c);
             }
         }
         int shareCount = winners.size();
+        if (shareCount == 0) {
+            throw new GameProgressException("No claims could be locked for processing",
+                    "No pending claims could be approved. Try again.");
+        }
 
         BigDecimal prizePool = game.getPrizePool();
         BigDecimal grossCommission = commissionFor(game);
@@ -590,6 +609,28 @@ public class GameEngineService {
                 .approvedCount(shareCount)
                 .rewardAmount(shares[0])
                 .commission(grossCommission)
+                .build();
+    }
+
+    /**
+     * Too many players claimed at once (more than the simultaneous-winner cap). All the
+     * claims are discarded without bans and the round is abandoned: a freshly shuffled
+     * number sequence is committed, the countdown restarts, and players are told a fresh
+     * game is starting. Nothing is paid and no one is penalised.
+     */
+    private BingoClaimResult restartDueToTooManyClaims(Long gameId, Long adminId, int claimCount) {
+        gameService.restartGame(gameId, adminId);
+        scheduleGameStart(gameId, 5);
+        publishGameRestartedEvent(gameId);
+        log.info("Game {}: {} simultaneous claims exceed the {} winner cap — restarted with a fresh number sequence.",
+                gameId, claimCount, MAX_SIMULTANEOUS_WINNERS);
+        return BingoClaimResult.builder()
+                .valid(false)
+                .pendingReview(false)
+                .gameEnded(false)
+                .approvedCount(0)
+                .rewardAmount(java.math.BigDecimal.ZERO)
+                .restarted(true)
                 .build();
     }
 
@@ -995,7 +1036,7 @@ public class GameEngineService {
         List<Integer> calledNumbers = calledNumberRepository
                 .findCalledNumbersByGameId(gameId);
 
-        int playerCount = gameCardRepository.countByGameId(gameId);
+        int playerCount = (int) gameCardRepository.countDistinctPlayersByGameId(gameId);
 
         return AdminGameState.builder()
                 .game(game)
@@ -1261,6 +1302,14 @@ public class GameEngineService {
         publishEvent(gameId, "CLAIM_RESOLVED", data);
     }
 
+    /** Tell every player in the game that the round was voided and a fresh game starts over. */
+    private void publishGameRestartedEvent(Long gameId) {
+        ObjectNode data = objectMapper.createObjectNode();
+        data.put("message", "The game is restarting because more than 3 players claimed Bingo at once. "
+                + "All registered players keep their cards and can play again — dealing a fresh set of numbers.");
+        publishEvent(gameId, "GAME_RESTARTED", data);
+    }
+
     /**
      * Notify the game's admin that a player claimed Bingo so they can review it,
      * even when they are in a different part of the app.
@@ -1319,6 +1368,7 @@ public class GameEngineService {
         private BigDecimal rewardAmount;
         private BigDecimal commission;
         private boolean banned;
+        private boolean restarted;
     }
 
     @lombok.Builder

@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { gamesApi } from '@/api';
-import { CreateGameRequest, GameSettingsUpdateRequest } from '@/types';
+import { AutomationConfigRequest, CreateGameRequest, GameSettingsUpdateRequest } from '@/types';
 
 export function useActiveGames() {
   return useQuery({
@@ -238,6 +238,28 @@ export function usePlayerCardHistory() {
     queryFn: async () => {
       const res = await gamesApi.getPlayerCardHistory();
       return res.data;
+    },
+  });
+}
+
+export function useAutomation() {
+  return useQuery({
+    queryKey: ['games', 'automation'],
+    queryFn: async () => {
+      const res = await gamesApi.getAutomation();
+      return res.data;
+    },
+    refetchInterval: 10000,
+  });
+}
+
+export function useSaveAutomation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: AutomationConfigRequest) => gamesApi.saveAutomation(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['games', 'automation'] });
+      queryClient.invalidateQueries({ queryKey: ['games', 'active'] });
     },
   });
 }

@@ -10,6 +10,8 @@ import {
   RegisterResponse,
   CreateGameRequest,
   GameSettingsUpdateRequest,
+  AutomationConfig,
+  AutomationConfigRequest,
   CalledNumberResponse,
   FairnessProof,
   PlayerCardHistory,
@@ -121,6 +123,14 @@ export const gamesApi = {
   },
   getPlayerCardHistory: async () => {
     const res = await apiClient.get<ApiResponse<PlayerCardHistory[]>>('/games/player/history/cards');
+    return res.data;
+  },
+  getAutomation: async () => {
+    const res = await apiClient.get<ApiResponse<AutomationConfig>>('/automation');
+    return res.data;
+  },
+  saveAutomation: async (data: AutomationConfigRequest) => {
+    const res = await apiClient.put<ApiResponse<AutomationConfig>>('/automation', data);
     return res.data;
   },
 };

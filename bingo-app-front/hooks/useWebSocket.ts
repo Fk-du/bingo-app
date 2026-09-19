@@ -7,7 +7,7 @@ import { getWsBaseUrl } from '@/lib/backend';
 import { getTelegramInitData } from '@/lib/telegram';
 
 interface GameEvent {
-  type: 'NUMBER_CALLED' | 'GAME_STATUS_CHANGED' | 'CLAIM_PENDING' | 'CLAIM_RESOLVED';
+  type: 'NUMBER_CALLED' | 'GAME_STATUS_CHANGED' | 'CLAIM_PENDING' | 'CLAIM_RESOLVED' | 'GAME_RESTARTED';
   data: Record<string, unknown>;
 }
 
@@ -74,7 +74,17 @@ function handleGameEvent(event: GameEvent) {
       }
       if (event.data.status === 'IN_PROGRESS') {
         store.setClaimPending(null);
+        store.setRestartNotice(null);
       }
+      break;
+    case 'GAME_RESTARTED':
+      store.setRestartNotice(
+        (event.data.message as string) ??
+          'The game is restarting because more than 3 players claimed Bingo at once. All registered players keep their cards and can play again — dealing a fresh set of numbers.'
+      );
+      store.setGameStatus(GameStatus.STARTING);
+      store.setCalledNumbers([]);
+      store.setTotalNumbersCalled(0);
       break;
     case 'CLAIM_PENDING':
       store.setGameStatus(GameStatus.CLAIM_PENDING);

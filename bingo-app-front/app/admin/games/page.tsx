@@ -7,13 +7,16 @@ import { Role } from '@/types/enums';
 import { useActiveGames, useStartGame, useCancelGame, useEndGame } from '@/hooks/useGames';
 import { getApiErrorMessage } from '@/api/client';
 import { CreateGameForm } from '@/components/games/CreateGameForm';
+import { AutomationPanel } from '@/components/games/AutomationPanel';
 import { GameList } from '@/components/games/GameList';
 import { SectionHeader, Surface } from '@/components/ui/Surface';
+import { useAutomation } from '@/hooks/useGames';
 
 type Notice = { type: 'success' | 'error'; text: string } | null;
 
 export default function AdminGamesPage() {
   const { data: games, isLoading } = useActiveGames();
+  const { data: automation } = useAutomation();
   const { mutate: startGame } = useStartGame();
   const { mutate: cancelGame } = useCancelGame();
   const { mutate: endGame } = useEndGame();
@@ -81,11 +84,21 @@ export default function AdminGamesPage() {
 
       <Surface className="p-4">
         <div className="mb-4">
-          <p className="text-[11px] uppercase tracking-[0.24em] text-bp-muted">Create game</p>
-          <h2 className="mt-1 text-lg font-semibold text-bp-text">New table setup</h2>
+          <p className="text-[11px] uppercase tracking-[0.24em] text-bp-muted">Game mode</p>
+          <h2 className="mt-1 text-lg font-semibold text-bp-text">Manual or Automatic</h2>
         </div>
-        <CreateGameForm />
+        <AutomationPanel />
       </Surface>
+
+      {!automation?.enabled && (
+        <Surface className="mt-4 p-4">
+          <div className="mb-4">
+            <p className="text-[11px] uppercase tracking-[0.24em] text-bp-muted">Create game</p>
+            <h2 className="mt-1 text-lg font-semibold text-bp-text">New table setup</h2>
+          </div>
+          <CreateGameForm />
+        </Surface>
+      )}
 
       <Surface className="mt-4 p-4">
         <div className="mb-4 flex items-center justify-between gap-3">

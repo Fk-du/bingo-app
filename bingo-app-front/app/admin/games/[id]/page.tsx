@@ -79,6 +79,18 @@ export default function AdminGameDetailPage({ params }: { params: Promise<{ id: 
       {
         onSuccess: (res) => {
           const data = res.data as BingoClaimResultResponse;
+          if (data.restarted) {
+            setApprovedCount(0);
+            setEndedByAction(false);
+            setCalledNumbers([]);
+            setTotalNumbersCalled(0);
+            setActionMsg(
+              res.message ||
+                'Too many claims — the game restarted with a fresh number sequence. Players were notified.'
+            );
+            refetchClaims();
+            return;
+          }
           setApprovedCount(data.approvedCount ?? approvedCount);
           setEndedByAction(true);
           setActionMsg(
@@ -263,24 +275,29 @@ export default function AdminGameDetailPage({ params }: { params: Promise<{ id: 
               </h2>
               <span className="text-xs text-bp-muted">
                 {tooManyWinners
-                  ? `More than ${MAX_WINNERS} players claimed — restart the round instead of approving.`
+                  ? `More than ${MAX_WINNERS} players claimed — approving will void the round, reshuffle the numbers and start fresh.`
                   : 'Up to 3 winners share the pot equally.'}
               </span>
             </div>
             <div className="flex gap-2">
-              {tooManyWinners ? (
+              {tooManyWinners && (
                 <ActionButton onClick={handleRestart} disabled={isRestarting || isProcessing} variant="danger">
                   {isRestarting ? 'Restarting…' : '↻ Restart game'}
                 </ActionButton>
-              ) : (
-                <ActionButton onClick={handleApproveAll} disabled={isApprovingAll || isProcessing} variant="success">
-                  {isApprovingAll
-                    ? 'Paying…'
+              )}
+              <ActionButton
+                onClick={handleApproveAll}
+                disabled={isApprovingAll || isProcessing}
+                variant={tooManyWinners ? 'primary' : 'success'}
+              >
+                {isApprovingAll
+                  ? 'Working…'
+                  : tooManyWinners
+                    ? '↻ Approve → restart & reshuffle'
                     : claimCount === 1
                       ? '✓ Approve winner — pay & end'
                       : `✓ Approve all (${claimCount}) — share pot`}
-                </ActionButton>
-              )}
+              </ActionButton>
             </div>
           </div>
           {pendingClaims && pendingClaims.length > 0 ? (

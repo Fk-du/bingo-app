@@ -12,7 +12,6 @@ import type { PendingClaimCard } from '@/types';
 import { getApiErrorMessage } from '@/api/client';
 import { useCountdown } from '@/hooks/useCountdown';
 import { BingoCard } from '@/components/games/BingoCard';
-import { NumberBoard } from '@/components/games/NumberBoard';
 import { ActionButton, Surface } from '@/components/ui/Surface';
 import { IconBack } from '@/components/ui/Icons';
 import { patternLabel } from '@/components/games/CreateGameForm';
@@ -51,6 +50,7 @@ export default function PlayerGamePage({ params }: { params: Promise<{ id: strin
     prizePool,
     playerCards,
     isConnecting,
+    restartNotice,
     setGameStatus,
     setStartTime: setStoreStartTime,
     setCalledNumbers,
@@ -107,6 +107,18 @@ export default function PlayerGamePage({ params }: { params: Promise<{ id: strin
       }
     });
   }, [gameState]);
+
+  // A fresh round was dealt (too many simultaneous claims) — wipe the old round's marks
+  // so the new number sequence starts clean.
+  useEffect(() => {
+    if (restartNotice) {
+      manualMarksSeeded.current = false;
+      Promise.resolve().then(() => {
+        setMarkedNumbers(new Set());
+        setClaimsDismissed(true);
+      });
+    }
+  }, [restartNotice]);
 
   const lastCalledNumber =
     calledNumbers.length > 0 ? calledNumbers[calledNumbers.length - 1].number : null;
@@ -248,10 +260,35 @@ export default function PlayerGamePage({ params }: { params: Promise<{ id: strin
         </div>
       </div>
 
-      <div className="mt-4 flex items-center justify-center gap-2.5 rounded-[18px] border border-bp-gold/25 bg-bp-gold/5 px-3 py-2">
-        <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-bp-muted">Winning pattern</span>
-        <PatternMini pattern={gameState?.winningPattern} customPatternName={gameState?.customPatternName} customPatternCells={gameState?.customPatternCells} />
-        <span className="text-sm font-black text-bp-gold">{patternLabel(gameState?.winningPattern, gameState?.customPatternName)}</span>
+      <div className="sticky top-0 z-20 -mx-4 mt-4 border-b border-bp-border/80 bg-bp-bg/95 px-4 pb-3 pt-3 backdrop-blur-xl">
+        <div className="flex items-center justify-center gap-2.5 rounded-[18px] border border-bp-gold/25 bg-bp-gold/5 px-3 py-2">
+          <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-bp-muted">Winning pattern</span>
+          <PatternMini pattern={gameState?.winningPattern} customPatternName={gameState?.customPatternName} customPatternCells={gameState?.customPatternCells} />
+          <span className="text-sm font-black text-bp-gold">{patternLabel(gameState?.winningPattern, gameState?.customPatternName)}</span>
+        </div>
+
+        <div className="mt-3 rounded-2xl border border-bp-border bg-bp-surface p-2.5">
+          <div className="mb-1.5 flex items-center justify-between">
+            <p className="text-[10px] font-bold uppercase tracking-[0.24em] text-bp-muted">Called numbers</p>
+            <p className="text-[10px] font-semibold text-bp-muted">{calledSet.size}/75</p>
+          </div>
+          {calledSet.size === 0 ? (
+            <p className="py-1 text-center text-xs text-bp-muted">No numbers called yet</p>
+          ) : (
+            <div className="flex flex-wrap justify-center gap-1">
+              {[...calledSet]
+                .sort((a, b) => a - b)
+                .map((n) => (
+                  <span
+                    key={n}
+                    className="flex h-6 w-6 items-center justify-center rounded-full border border-bp-danger/50 bg-gradient-to-br from-bp-danger to-bp-danger/80 text-[10px] font-semibold leading-none text-white shadow-[0_0_8px_rgba(235,87,87,0.35)] sm:h-7 sm:w-7 sm:text-[11px]"
+                  >
+                    {n}
+                  </span>
+                ))}
+            </div>
+          )}
+        </div>
       </div>
 
       <FairnessPanel gameId={gameId} status={gameStatus ?? undefined} liveHash={gameState?.fairnessHash} />
@@ -293,6 +330,12 @@ export default function PlayerGamePage({ params }: { params: Promise<{ id: strin
         </div>
       )}
 
+      {restartNotice && (
+        <div className="mt-3 rounded-2xl border border-bp-gold/50 bg-gradient-to-br from-bp-gold/25 via-bp-gold/10 to-transparent px-4 py-3 text-center">
+          <p className="text-sm font-bold text-amber-200">🔁 {restartNotice}</p>
+        </div>
+      )}
+
       {isStarting && (
         <div className="mt-3 rounded-2xl border border-bp-gold/40 bg-gradient-to-br from-bp-gold/15 via-bp-gold/5 to-transparent px-4 py-4 text-center">
           <p className="text-[11px] font-bold uppercase tracking-[0.25em] text-bp-gold/80">Get ready</p>
@@ -300,7 +343,11 @@ export default function PlayerGamePage({ params }: { params: Promise<{ id: strin
             {countdown ?? 0}
           </p>
           <p className="mt-1 text-sm text-bp-muted">
-            {hasAnyCard ? 'Game starting — good luck!' : 'Starting — registration is closed.'}
+            {restartNotice
+              ? 'Starting fresh with a new number order — good luck!'
+              : hasAnyCard
+                ? 'Game starting — good luck!'
+                : 'Starting — registration is closed.'}
           </p>
         </div>
       )}
@@ -500,65 +547,60 @@ export default function PlayerGamePage({ params }: { params: Promise<{ id: strin
 
         {hasAnyCard && playerCards && playerCards.length > 0 && (
           <>
-            <div className="grid items-start gap-3 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]">
-              <div className="space-y-6">
-                {playerCards.map((pc) => {
-                  const cardMarked = markedNumbers;
-                  const prog = manualDaub ? patternProgress(pc.numbers, cardMarked, gameState?.winningPattern) : null;
-                  const patternDone = !!prog && prog.done === prog.total;
-                  return (
-                    <div key={pc.cardId} className="flex flex-col gap-2">
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="inline-flex items-center rounded-full border border-bp-border bg-bp-bg/60 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-bp-muted">
-                          Card #{pc.cardId}
-                        </span>
-                        <div className="flex items-center gap-1.5">
-                          {pc.winner && (
-                            <span className="inline-flex items-center gap-1 rounded-full border border-bp-success/40 bg-bp-success/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-emerald-300">
-                              Winner
-                            </span>
-                          )}
-                          {pc.banned && (
-                            <span className="inline-flex items-center gap-1 rounded-full border border-bp-danger/50 bg-bp-danger/15 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-red-300">
-                              Banned
-                            </span>
-                          )}
-                        </div>
+            <div className="grid items-start gap-4 grid-cols-2">
+              {playerCards.map((pc) => {
+                const cardMarked = markedNumbers;
+                const prog = manualDaub ? patternProgress(pc.numbers, cardMarked, gameState?.winningPattern) : null;
+                const patternDone = !!prog && prog.done === prog.total;
+                return (
+                  <div key={pc.cardId} className="flex flex-col gap-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="inline-flex items-center rounded-full border border-bp-border bg-bp-bg/60 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-bp-muted">
+                        Card #{pc.cardId}
+                      </span>
+                      <div className="flex items-center gap-1.5">
+                        {pc.winner && (
+                          <span className="inline-flex items-center gap-1 rounded-full border border-bp-success/40 bg-bp-success/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-emerald-300">
+                            Winner
+                          </span>
+                        )}
+                        {pc.banned && (
+                          <span className="inline-flex items-center gap-1 rounded-full border border-bp-danger/50 bg-bp-danger/15 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-red-300">
+                            Banned
+                          </span>
+                        )}
                       </div>
-                      <BingoCard
-                        numbers={pc.numbers}
-                        calledNumbers={calledSet}
-                        autoMark={!manualDaub}
-                        markedNumbers={cardMarked}
-                        onToggleMark={manualDaub && !pc.banned ? (n) => toggleMark(n) : undefined}
-                        size="sm"
-                      />
-                      {pc.banned && (
-                        <p className="text-center text-[11px] text-red-300/80">
-                          This card is banned. Your other cards are still in play.
-                        </p>
-                      )}
-                      {manualDaub && prog && (
-                        <p className={`text-center text-[11px] font-bold ${patternDone ? 'text-emerald-300' : 'text-bp-muted'}`}>
-                          {patternDone ? '✓ Pattern complete — hit BINGO!' : `Pattern ${prog.done}/${prog.total} daubed`}
-                        </p>
-                      )}
-                      {isLive && !pc.banned && !pc.winner && (
-                        <button
-                          onClick={() => handleClaim(pc.cardId)}
-                          disabled={isClaiming}
-                          className="bp-bingo-gradient w-full rounded-xl py-3 text-base font-black tracking-[0.15em] text-white shadow transition hover:scale-[1.02] active:scale-[0.98] disabled:opacity-60"
-                        >
-                          {isClaiming ? '✦ CHECKING...' : `✦ BINGO! ✦`}
-                        </button>
-                      )}
                     </div>
-                  );
-                })}
-              </div>
-              <div className={!autoMark ? 'lg:mt-7' : ''}>
-                <NumberBoard calledNumbers={calledSet} compact />
-              </div>
+                    <BingoCard
+                      numbers={pc.numbers}
+                      calledNumbers={calledSet}
+                      autoMark={!manualDaub}
+                      markedNumbers={cardMarked}
+                      onToggleMark={manualDaub && !pc.banned ? (n) => toggleMark(n) : undefined}
+                      size="sm"
+                    />
+                    {pc.banned && (
+                      <p className="text-center text-[11px] text-red-300/80">
+                        This card is banned. Your other cards are still in play.
+                      </p>
+                    )}
+                    {manualDaub && prog && (
+                      <p className={`text-center text-[11px] font-bold ${patternDone ? 'text-emerald-300' : 'text-bp-muted'}`}>
+                        {patternDone ? '✓ Pattern complete — hit BINGO!' : `Pattern ${prog.done}/${prog.total} daubed`}
+                      </p>
+                    )}
+                    {isLive && !pc.banned && !pc.winner && (
+                      <button
+                        onClick={() => handleClaim(pc.cardId)}
+                        disabled={isClaiming}
+                        className="bp-bingo-gradient w-full rounded-xl py-3 text-base font-black tracking-[0.15em] text-white shadow transition hover:scale-[1.02] active:scale-[0.98] disabled:opacity-60"
+                      >
+                        {isClaiming ? '✦ CHECKING...' : `✦ BINGO! ✦`}
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
             </div>
             <div className="mt-3 flex items-center justify-between gap-4 text-sm">
               <button
